@@ -1,6 +1,6 @@
 // ─── Question / Quiz types ───────────────────────────────────────────────────
 
-export type QuestionType = 'text' | 'image' | 'both';
+export type QuestionType = "text" | "image" | "both";
 
 export interface Question {
   id: string;
@@ -16,6 +16,7 @@ export interface Question {
 export interface Category {
   id: string;
   name: string;
+  description?: string;
   questions: Question[];
 }
 
@@ -30,16 +31,16 @@ export interface Quiz {
 // ─── Multiplayer Room types (Firebase) ───────────────────────────────────────
 
 export type RoomPhase =
-  | 'lobby'       // waiting for players to join
-  | 'board'       // showing the Jeopardy board
-  | 'question'    // a question card is open
-  | 'buzzing'     // accepting buzzes
-  | 'judging'     // someone buzzed — host judging
-  | 'answer'      // host revealed answer
-  | 'ended';      // game over
+  | "lobby" // waiting for players to join
+  | "board" // showing the Jeopardy board
+  | "question" // a question card is open
+  | "buzzing" // accepting buzzes
+  | "judging" // someone buzzed — host judging
+  | "answer" // host revealed answer
+  | "ended"; // game over
 
 export interface RoomPlayer {
-  id: string;        // playerId (nanoid / random)
+  id: string; // playerId (nanoid / random)
   name: string;
   score: number;
   joinedAt: number;
@@ -65,15 +66,15 @@ export interface ActiveQuestion {
 }
 
 export interface Room {
-  id: string;           // 6-char room code
+  id: string; // 6-char room code
   hostId: string;
   quizId: string;
   quizTitle: string;
   phase: RoomPhase;
-  players: Record<string, RoomPlayer>;  // playerId → player
+  players: Record<string, RoomPlayer>; // playerId → player
   completedQuestions: Record<string, boolean>; // questionId → true
   activeQuestion: ActiveQuestion | null;
-  buzzes?: Record<string, number>;       // playerId -> timestamp
+  buzzes?: Record<string, number>; // playerId -> timestamp
   createdAt: number;
 }
 
@@ -95,6 +96,6 @@ export interface GameSettings {
   isSoundMuted: boolean;
   defaultTimer: number;
   largeFontMode: boolean;
-  animationSpeed: 'slow' | 'normal' | 'fast';
-  language: 'en' | 'es' | 'fr' | 'de';
+  animationSpeed: "slow" | "normal" | "fast";
+  language: "en" | "es" | "fr" | "de";
 }

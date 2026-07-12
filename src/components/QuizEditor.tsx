@@ -29,6 +29,7 @@ const makeQ = (id: string, value: number): Question => ({
 const makeCat = (id: string, name: string): Category => ({
   id,
   name,
+  description: "",
   questions: [10, 20, 30, 40, 50].map((v) => makeQ(`q-${id}-${v}`, v)),
 });
 
@@ -68,6 +69,13 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     setQuiz((p) => {
       const c = [...p.categories];
       c[idx] = { ...c[idx], name };
+      return { ...p, categories: c };
+    });
+
+  const setCatDescription = (idx: number, description: string) =>
+    setQuiz((p) => {
+      const c = [...p.categories];
+      c[idx] = { ...c[idx], description };
       return { ...p, categories: c };
     });
 
@@ -253,44 +261,55 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
                 <div
                   key={cat.id}
                   onClick={() => setActiveCatIdx(idx)}
-                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                  className={`p-3 rounded-xl border flex flex-col gap-3 cursor-pointer transition-all ${
                     activeCatIdx === idx
                       ? "bg-primary-accent/15 border-primary-accent"
                       : "bg-card-bg/30 border-white/5 hover:bg-card-bg/60"
                   }`}
                 >
-                  <input
-                    type="text"
-                    value={cat.name}
-                    onChange={(e) => setCatName(idx, e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    title="Category name"
-                    aria-label="Category name"
-                    className="flex-1 bg-transparent border-0 text-xs font-bold text-text-main outline-none min-w-0"
-                  />
-                  <div
-                    className="flex gap-0.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => swapCats(idx, idx - 1)}
-                      disabled={idx === 0}
-                      title="Move category up"
-                      aria-label="Move category up"
-                      className="p-1 rounded text-text-muted disabled:opacity-30 hover:text-text-main"
+                  <div className="flex items-center justify-between gap-2 w-full">
+                    <input
+                      type="text"
+                      value={cat.name}
+                      onChange={(e) => setCatName(idx, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      title="Category name"
+                      aria-label="Category name"
+                      className="flex-1 bg-transparent border-0 text-xs font-bold text-text-main outline-none min-w-0"
+                    />
+                    <div
+                      className="flex gap-0.5"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => swapCats(idx, idx + 1)}
-                      disabled={idx === quiz.categories.length - 1}
-                      title="Move category down"
-                      aria-label="Move category down"
-                      className="p-1 rounded text-text-muted disabled:opacity-30 hover:text-text-main"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </button>
+                      <button
+                        onClick={() => swapCats(idx, idx - 1)}
+                        disabled={idx === 0}
+                        title="Move category up"
+                        aria-label="Move category up"
+                        className="p-1 rounded text-text-muted disabled:opacity-30 hover:text-text-main"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => swapCats(idx, idx + 1)}
+                        disabled={idx === quiz.categories.length - 1}
+                        title="Move category down"
+                        aria-label="Move category down"
+                        className="p-1 rounded text-text-muted disabled:opacity-30 hover:text-text-main"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
+                  <textarea
+                    value={cat.description ?? ""}
+                    onChange={(e) => setCatDescription(idx, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    rows={2}
+                    placeholder="Category description"
+                    aria-label="Category description"
+                    className="w-full bg-primary-bg border border-white/10 rounded-xl px-3 py-2 text-[11px] text-text-main outline-none focus:border-primary-accent resize-none"
+                  />
                 </div>
               ))}
             </div>
