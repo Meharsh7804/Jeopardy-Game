@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRoom } from '../context/RoomContext';
 import { Zap, Trophy, Crown, LogOut, Users } from 'lucide-react';
 import { soundManager } from '../utils/sound';
+import { db } from '../firebase';
+import { ref, get } from 'firebase/database';
+import type { Quiz } from '../types/jeopardy';
 
 interface PlayerRoomProps {
   onLeave: () => void;
@@ -10,22 +13,23 @@ interface PlayerRoomProps {
 
 export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const { room, myId, myName, buzz, leaveRoom } = useRoom();
-  const [buzzed, setBuzzed] = useState(false);
+  const [quiz, setQuiz] = useState<Quiz | null>(null);
 
   const myPlayer = room?.players?.[myId];
-  const buzzedPlayer = room?.buzz ? room.players[room.buzz.playerId] : null;
-  const iMyBuzz = room?.buzz?.playerId === myId;
+  const hasBuzzed = !!room?.buzzes?.[myId];
+  const sortedBuzzes = Object.entries(room?.buzzes || {}).sort((a, b) => a[1] - b[1]);
 
-  // Reset buzzed state when a new question opens
   useEffect(() => {
-    if (room?.phase === 'question' || room?.phase === 'board') {
-      setBuzzed(false);
-    }
-  }, [room?.phase, room?.activeQuestion?.questionId]);
+    if (!room?.quizId) return;
+    const fetchQuiz = async () => {
+      const snap = await get(ref(db, `quizzes/${room.quizId}`));
+      if (snap.exists()) setQuiz(snap.val());
+    };
+    fetchQuiz();
+  }, [room?.quizId]);
 
   const handleBuzz = async () => {
-    if (buzzed || room?.phase !== 'buzzing') return;
-    setBuzzed(true);
+    if (hasBuzzed || room?.phase !== 'buzzing') return;
     soundManager.playBuzzer();
     await buzz();
   };
@@ -64,7 +68,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-start px-4 py-6 gap-6 max-w-lg mx-auto w-full">
+      <main className="flex-1 flex flex-col items-center justify-start px-4 py-6 gap-6 max-w-2xl mx-auto w-full">
         <AnimatePresence mode="wait">
 
           {/* LOBBY — waiting */}
@@ -91,18 +95,45 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
             </motion.div>
           )}
 
-          {/* BOARD — show read-only scoreboard while host picks a question */}
+          {/* BOARD — show read-only board while host picks a question */}
           {room.phase === 'board' && (
             <motion.div
               key="board"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="w-full space-y-4"
+              className="w-full space-y-6"
             >
               <div className="glass-panel p-4 rounded-2xl text-center">
                 <p className="text-sm text-text-muted">Host is selecting a question…</p>
               </div>
+              
+              {/* Render the read-only board if we fetched the quiz */}
+              {quiz && (
+                <div
+                  className="grid gap-2"
+                  style={{ gridTemplateColumns: `repeat(${quiz.categories.length}, minmax(0, 1fr))` }}
+                >
+                  {quiz.categories.map((cat) => (
+                    <div key={cat.id} className="glass-panel p-2 rounded-xl text-center font-display font-extrabold text-[10px] text-text-main uppercase tracking-wide min-h-[40px] flex items-center justify-center">
+                      {cat.name}
+                    </div>
+                  ))}
+                  {Array.from({ length: (quiz.categories[0]?.questions.length ?? 5) }).map((_, rowIdx) =>
+                    quiz.categories.map((cat) => {
+                      const q = cat.questions[rowIdx];
+                      if (!q) return <div key={`${cat.id}-${rowIdx}`} />;
+                      const done = !!room.completedQuestions?.[q.id];
+                      return (
+                        <div key={q.id} className={`glass-panel rounded-xl p-2 font-display font-extrabold text-sm text-center flex items-center justify-center min-h-[45px] ${done ? 'opacity-20' : 'text-[#FACC15]'}`}>
+                          {done ? '' : `$${q.value}`}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
               <div className="glass-panel p-4 rounded-2xl space-y-3">
                 <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Scores</p>
                 {players.map((p, i) => (
@@ -118,39 +149,14 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
             </motion.div>
           )}
 
-          {/* QUESTION — show the clue, no buzzing yet */}
-          {room.phase === 'question' && room.activeQuestion && (
-            <motion.div
-              key="question"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              className="w-full space-y-4"
-            >
-              <div className="glass-panel p-6 rounded-2xl text-center space-y-4">
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{room.activeQuestion.categoryName}</span>
-                  <span className="font-display font-extrabold text-[#FACC15]">${room.activeQuestion.value}</span>
-                </div>
-                {room.activeQuestion.mediaUrl && room.activeQuestion.type !== 'text' && (
-                  <img src={room.activeQuestion.mediaUrl} alt="" className="max-h-40 mx-auto rounded-xl object-contain" />
-                )}
-                <p className="text-lg font-display font-semibold text-text-main leading-relaxed">{room.activeQuestion.text}</p>
-              </div>
-              <div className="glass-panel p-4 rounded-2xl text-center">
-                <p className="text-sm text-text-muted animate-pulse">Waiting for host to open buzzers…</p>
-              </div>
-            </motion.div>
-          )}
-
-          {/* BUZZING — big buzz button! */}
+          {/* BUZZING — big buzz button + list of buzzes */}
           {room.phase === 'buzzing' && room.activeQuestion && (
             <motion.div
               key="buzzing"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              className="w-full space-y-4"
+              className="w-full max-w-lg mx-auto space-y-4"
             >
               <div className="glass-panel p-6 rounded-2xl text-center space-y-3">
                 <div className="flex items-center justify-center gap-2">
@@ -163,55 +169,54 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 <p className="text-lg font-display font-semibold text-text-main leading-relaxed">{room.activeQuestion.text}</p>
               </div>
 
-              {/* Buzz button */}
-              <div className="flex flex-col items-center gap-3">
-                <motion.button
-                  onClick={handleBuzz}
-                  disabled={buzzed}
-                  whileTap={{ scale: buzzed ? 1 : 0.93 }}
-                  className={`w-48 h-48 rounded-full font-display font-extrabold text-2xl shadow-2xl transition-all duration-150 flex flex-col items-center justify-center gap-2 ${
-                    buzzed
-                      ? 'bg-text-muted/20 border-2 border-white/10 text-text-muted cursor-not-allowed'
-                      : 'bg-gradient-to-br from-danger-accent to-[#B91C1C] border-4 border-danger-accent/50 text-white hover:brightness-110 cursor-pointer shadow-danger-accent/30 active:scale-95'
-                  }`}
-                >
-                  <Zap className={`w-10 h-10 ${buzzed ? '' : 'fill-white/30'}`} />
-                  {buzzed ? 'Buzzed!' : 'BUZZ!'}
-                </motion.button>
-                <p className="text-xs text-text-muted">{buzzed ? 'You buzzed! Waiting for host…' : 'Tap to buzz in first!'}</p>
-              </div>
-            </motion.div>
-          )}
-
-          {/* JUDGING — someone buzzed */}
-          {room.phase === 'judging' && room.activeQuestion && (
-            <motion.div
-              key="judging"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              className="w-full space-y-4"
-            >
-              <div className="glass-panel p-6 rounded-2xl text-center space-y-3">
-                <p className="text-lg font-display font-semibold text-text-main">{room.activeQuestion.text}</p>
-              </div>
-
-              {iMyBuzz ? (
-                <motion.div
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  className="glass-panel p-6 rounded-2xl text-center space-y-2 border-[#FACC15]/40 bg-[#FACC15]/5"
-                >
-                  <Zap className="w-8 h-8 text-[#FACC15] fill-[#FACC15] mx-auto" />
-                  <p className="font-display font-extrabold text-lg text-[#FACC15]">You buzzed first!</p>
-                  <p className="text-sm text-text-muted">Host is judging your answer…</p>
-                </motion.div>
+              {!hasBuzzed ? (
+                /* Buzz button */
+                <div className="flex flex-col items-center gap-3">
+                  <motion.button
+                    onClick={handleBuzz}
+                    disabled={hasBuzzed}
+                    whileTap={{ scale: hasBuzzed ? 1 : 0.93 }}
+                    className={`w-48 h-48 rounded-full font-display font-extrabold text-2xl shadow-2xl transition-all duration-150 flex flex-col items-center justify-center gap-2 ${
+                      hasBuzzed
+                        ? 'bg-text-muted/20 border-2 border-white/10 text-text-muted cursor-not-allowed'
+                        : 'bg-gradient-to-br from-danger-accent to-[#B91C1C] border-4 border-danger-accent/50 text-white hover:brightness-110 cursor-pointer shadow-danger-accent/30 active:scale-95'
+                    }`}
+                  >
+                    <Zap className={`w-10 h-10 ${hasBuzzed ? '' : 'fill-white/30'}`} />
+                    {hasBuzzed ? 'Buzzed!' : 'BUZZ!'}
+                  </motion.button>
+                  <p className="text-xs text-text-muted">Tap to buzz in first!</p>
+                </div>
               ) : (
-                <div className="glass-panel p-5 rounded-2xl text-center">
-                  <p className="text-sm text-text-muted">
-                    <span className="font-bold text-text-main">{buzzedPlayer?.name ?? 'Someone'}</span> buzzed first.
-                    <br />Waiting for host to judge…
-                  </p>
+                /* Buzzed List */
+                <div className="glass-panel p-5 rounded-2xl space-y-4">
+                  <AnimatePresence>
+                    {sortedBuzzes.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="space-y-2"
+                      >
+                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Buzz Order</p>
+                        {sortedBuzzes.map(([pId], idx) => {
+                          const p = room.players[pId];
+                          if (!p) return null;
+                          return (
+                            <div key={pId} className={`flex items-center gap-3 p-3 rounded-xl border ${idx === 0 ? 'bg-[#FACC15]/10 border-[#FACC15]/40' : 'bg-card-bg border-white/5'}`}>
+                              <div className="w-6 text-center font-bold text-text-muted text-xs">#{idx + 1}</div>
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-text-main">
+                                  {idx === 0 ? <span className="text-[#FACC15]">{p.name}</span> : p.name} {pId === myId && <span className="text-[10px] ml-1">(you)</span>}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <p className="text-center text-xs text-text-muted mt-2">Waiting for host to judge...</p>
                 </div>
               )}
             </motion.div>

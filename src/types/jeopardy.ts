@@ -73,7 +73,7 @@ export interface Room {
   players: Record<string, RoomPlayer>;  // playerId → player
   completedQuestions: Record<string, boolean>; // questionId → true
   activeQuestion: ActiveQuestion | null;
-  buzz: BuzzEvent | null;               // first buzz
+  buzzes?: Record<string, number>;       // playerId -> timestamp
   createdAt: number;
 }
 

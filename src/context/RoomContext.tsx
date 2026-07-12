@@ -21,6 +21,20 @@ import type { Room, RoomPlayer, ActiveQuestion, RoomPhase, Quiz, Question } from
 const genId = (len = 6) =>
   Math.random().toString(36).toUpperCase().slice(2, 2 + len);
 
+/** Recursively strip `undefined` values so Firebase doesn't silently reject writes. */
+const sanitize = (obj: any): any => {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  if (typeof obj === 'object') {
+    const clean: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined) clean[k] = sanitize(v);
+    }
+    return clean;
+  }
+  return obj;
+};
+
 // ─── context shape ────────────────────────────────────────────────────────────
 
 interface RoomContextProps {
@@ -38,7 +52,6 @@ interface RoomContextProps {
   createRoom: (quiz: Quiz, hostName: string) => Promise<string>;
   startGame: () => Promise<void>;
   openQuestion: (question: Question, categoryName: string) => Promise<void>;
-  enableBuzzing: () => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
   revealAnswer: () => Promise<void>;
   closeQuestion: () => Promise<void>;
@@ -123,13 +136,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         players: { [myId]: hostPlayer },
         completedQuestions: {},
         activeQuestion: null,
-        buzz: null,
         createdAt: Date.now(),
       };
 
-      await set(ref(db, `rooms/${code}`), newRoom);
+      await set(ref(db, `rooms/${code}`), sanitize(newRoom));
       // Store the quiz so the host can open questions
-      await set(ref(db, `quizzes/${quiz.id}`), quiz);
+      await set(ref(db, `quizzes/${quiz.id}`), sanitize(quiz));
 
       setMyName(hostName);
       sessionStorage.setItem('jeopardy_player_name', hostName);
@@ -165,21 +177,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (question.isDailyDouble) aq.isDailyDouble = question.isDailyDouble;
     await update(ref(db, `rooms/${roomCode}`), {
       activeQuestion: aq,
-      buzz: null,
-      phase: 'question' as RoomPhase,
+      buzzes: null as any,
+      phase: 'buzzing' as RoomPhase,
     });
-  }, [roomCode]);
-
-  // ── Host: enable buzzing ──────────────────────────────────────────────────
-  const enableBuzzing = useCallback(async () => {
-    if (!roomCode) return;
-    await update(ref(db, `rooms/${roomCode}`), { phase: 'buzzing' as RoomPhase, buzz: null });
   }, [roomCode]);
 
   // ── Host: judge answer correct / incorrect ────────────────────────────────
   const judgeAnswer = useCallback(async (correct: boolean) => {
     if (!roomCode || !room) return;
-    const buzzPlayerId = room.buzz?.playerId;
+    
+    // Sort buzzes to find the first one
+    const sortedBuzzes = Object.entries(room.buzzes || {}).sort((a, b) => a[1] - b[1]);
+    const buzzPlayerId = sortedBuzzes[0]?.[0];
     if (!buzzPlayerId) return;
 
     const value = room.activeQuestion?.value ?? 0;
@@ -188,18 +197,16 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updates: Record<string, any> = {
       [`players/${buzzPlayerId}/score`]: currentScore + delta,
-      phase: correct ? ('board' as RoomPhase) : ('buzzing' as RoomPhase),
-      buzz: correct ? null : null,
     };
 
     if (correct && room.activeQuestion) {
       updates[`completedQuestions/${room.activeQuestion.questionId}`] = true;
       updates['activeQuestion'] = null;
       updates['phase'] = 'board' as RoomPhase;
+      updates['buzzes'] = null;
     } else {
-      // Incorrect — re-open buzzing so others can try
-      updates['buzz'] = null;
-      updates['phase'] = 'buzzing' as RoomPhase;
+      // Incorrect — remove this person's buzz so the next person in line is evaluated
+      updates[`buzzes/${buzzPlayerId}`] = null;
     }
 
     await update(ref(db, `rooms/${roomCode}`), updates);
@@ -219,7 +226,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await update(ref(db, `rooms/${roomCode}`), {
       phase: 'board' as RoomPhase,
       activeQuestion: null,
-      buzz: null,
+      buzzes: null as any,
       [`completedQuestions/${qId}`]: true,
     });
   }, [roomCode, room]);
@@ -265,19 +272,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Only allowed when phase is 'buzzing'
     if (room.phase !== 'buzzing') return;
     // Already buzzed
-    if (room.buzz) return;
-
-    const buzzEvent = {
-      playerId: myId,
-      playerName: myName,
-      timestamp: Date.now(),
-    };
+    if (room.buzzes?.[myId]) return;
 
     await update(ref(db, `rooms/${roomCode}`), {
-      buzz: buzzEvent,
-      phase: 'judging' as RoomPhase,
+      [`buzzes/${myId}`]: Date.now(),
     });
-  }, [roomCode, room, myId, myName]);
+  }, [roomCode, room, myId]);
 
   // ── Leave / cleanup ───────────────────────────────────────────────────────
   const leaveRoom = useCallback(() => {
@@ -291,7 +291,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <RoomContext.Provider value={{
       myId, myName, isHost,
       room, loading, error,
-      createRoom, startGame, openQuestion, enableBuzzing,
+      createRoom, startGame, openQuestion,
       judgeAnswer, revealAnswer, closeQuestion, endGame,
       joinRoom, buzz,
       leaveRoom,

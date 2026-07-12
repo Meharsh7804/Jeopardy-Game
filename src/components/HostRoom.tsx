@@ -5,7 +5,7 @@ import { useQuizLibrary } from '../context/QuizLibraryContext';
 import type { Quiz, Question } from '../types/jeopardy';
 import {
   Users, Copy, Check, Play, Trophy, Crown,
-  Zap, Eye, X, ChevronRight, LogOut,
+  Eye, X, ChevronRight, LogOut,
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
 
@@ -14,7 +14,7 @@ interface HostRoomProps {
 }
 
 export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
-  const { room, startGame, openQuestion, enableBuzzing, judgeAnswer, revealAnswer, closeQuestion, endGame, leaveRoom } = useRoom();
+  const { room, startGame, openQuestion, judgeAnswer, revealAnswer, closeQuestion, endGame, leaveRoom } = useRoom();
   const { quizzes } = useQuizLibrary();
 
   const [copied, setCopied] = useState(false);
@@ -31,7 +31,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
   const players = Object.values(room.players).sort((a, b) => b.score - a.score);
   const gamePlayers = players.filter((p) => !p.isHost);
-  const buzzedPlayer = room.buzz ? room.players[room.buzz.playerId] : null;
+  const sortedBuzzes = Object.entries(room.buzzes || {}).sort((a, b) => a[1] - b[1]);
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(room.id).then(() => {
@@ -126,7 +126,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   layout
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   className={`flex items-center justify-between p-2.5 rounded-xl border ${
-                    buzzedPlayer?.id === p.id
+                    sortedBuzzes[0]?.[0] === p.id
                       ? 'bg-[#FACC15]/10 border-[#FACC15]/40'
                       : 'bg-card-bg/30 border-white/5'
                   }`}
@@ -254,8 +254,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               </motion.div>
             )}
 
-            {/* QUESTION / BUZZING / JUDGING / ANSWER */}
-            {['question', 'buzzing', 'judging', 'answer'].includes(room.phase) && room.activeQuestion && (
+            {/* QUESTION / BUZZING / ANSWER */}
+            {['buzzing', 'answer'].includes(room.phase) && room.activeQuestion && (
               <motion.div
                 key="question"
                 initial={{ opacity: 0, y: 20 }}
@@ -300,56 +300,45 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                 <div className="glass-panel p-5 rounded-2xl space-y-4">
                   {/* Buzz indicator */}
                   <AnimatePresence>
-                    {buzzedPlayer && (
+                    {sortedBuzzes.length > 0 ? (
                       <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
-                        className="flex items-center gap-3 p-4 rounded-xl bg-[#FACC15]/10 border border-[#FACC15]/40"
+                        className="space-y-2"
                       >
-                        <Zap className="w-5 h-5 text-[#FACC15] fill-[#FACC15]" />
-                        <div>
-                          <p className="font-bold text-sm text-text-main">
-                            <span className="text-[#FACC15]">{buzzedPlayer.name}</span> buzzed first!
-                          </p>
-                          <p className="text-xs text-text-muted">Current score: {buzzedPlayer.score} pts</p>
-                        </div>
+                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Buzz Order</p>
+                        {sortedBuzzes.map(([pId], idx) => {
+                          const p = room.players[pId];
+                          if (!p) return null;
+                          return (
+                            <div key={pId} className={`flex items-center gap-3 p-3 rounded-xl border ${idx === 0 ? 'bg-[#FACC15]/10 border-[#FACC15]/40' : 'bg-card-bg border-white/5'}`}>
+                              <div className="w-6 text-center font-bold text-text-muted text-xs">#{idx + 1}</div>
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-text-main">
+                                  {idx === 0 ? <span className="text-[#FACC15]">{p.name}</span> : p.name}
+                                </p>
+                                <p className="text-xs text-text-muted">Score: {p.score} pts</p>
+                              </div>
+                              {idx === 0 && (
+                                <div className="flex gap-2">
+                                  <button onClick={() => handleJudge(true)} className="p-2 rounded-lg bg-success-accent hover:brightness-110 text-white transition flex items-center justify-center" title="Correct"><Check className="w-4 h-4" /></button>
+                                  <button onClick={() => handleJudge(false)} className="p-2 rounded-lg bg-danger-accent hover:brightness-110 text-white transition flex items-center justify-center" title="Wrong"><X className="w-4 h-4" /></button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </motion.div>
+                    ) : (
+                      <div className="text-center p-4 border border-white/10 border-dashed rounded-xl">
+                        <p className="text-sm text-text-muted animate-pulse">Waiting for players to buzz in...</p>
+                      </div>
                     )}
                   </AnimatePresence>
 
                   {/* Host action buttons */}
                   <div className="flex flex-wrap gap-3">
-                    {/* Enable buzzing */}
-                    {room.phase === 'question' && (
-                      <button
-                        onClick={enableBuzzing}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-primary-accent hover:brightness-110 text-white font-bold text-sm transition"
-                      >
-                        <Zap className="w-4 h-4" />
-                        Open Buzzers
-                      </button>
-                    )}
-
-                    {/* Judge buttons — shown when someone buzzed */}
-                    {room.phase === 'judging' && buzzedPlayer && (
-                      <>
-                        <button
-                          onClick={() => handleJudge(true)}
-                          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-success-accent hover:brightness-110 text-white font-bold text-sm transition"
-                        >
-                          <Check className="w-4 h-4" />
-                          Correct (+${room.activeQuestion.value})
-                        </button>
-                        <button
-                          onClick={() => handleJudge(false)}
-                          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-danger-accent hover:brightness-110 text-white font-bold text-sm transition"
-                        >
-                          <X className="w-4 h-4" />
-                          Wrong (-${room.activeQuestion.value})
-                        </button>
-                      </>
-                    )}
 
                     {/* Reveal answer */}
                     {!room.activeQuestion.revealAnswer && (
