@@ -65,7 +65,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             <span className="font-display font-extrabold text-sm text-text-main">Q</span>
           </div>
           <div>
-            <h1 className="font-display font-extrabold text-base text-text-main leading-none">QuizMaster</h1>
+            <h1 className="font-display font-extrabold text-base text-text-main leading-none">Buzzing With Quizzing</h1>
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Host View</p>
           </div>
         </div>

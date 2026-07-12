@@ -72,10 +72,11 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             Live Multiplayer
           </div>
           <h1 className="text-5xl font-display font-extrabold text-text-main tracking-tight leading-none">
-            Quiz<span className="bg-gradient-to-r from-primary-accent to-secondary-accent bg-clip-text text-transparent">Master</span>
+            Buzzing<span className="bg-gradient-to-r from-primary-accent to-secondary-accent bg-clip-text text-transparent"> With Quizzing</span>
           </h1>
-          <p className="text-text-muted text-sm max-w-sm mx-auto">
-            Host a live Jeopardy game — players join from any device, buzz in, and compete in real-time.
+          <p className="text-text-muted text-sm max-w-sm mx-auto">  
+            Host a live Jeopardy game <br></br>
+            <span className='font-bold text-text-main'>Ask questions</span>, <span className='font-bold text-text-main'>Buzz in</span>, and compete for points.
           </p>
         </div>
 

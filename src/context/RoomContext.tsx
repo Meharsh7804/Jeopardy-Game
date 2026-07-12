@@ -152,17 +152,17 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Host: open a question ─────────────────────────────────────────────────
   const openQuestion = useCallback(async (question: Question, categoryName: string) => {
     if (!roomCode) return;
-    const aq: ActiveQuestion = {
+    const aq: Partial<ActiveQuestion> = {
       questionId: question.id,
       categoryName,
       value: question.value,
       text: question.text,
       answer: question.answer,
       type: question.type,
-      mediaUrl: question.mediaUrl,
-      isDailyDouble: question.isDailyDouble,
       revealAnswer: false,
     };
+    if (question.mediaUrl) aq.mediaUrl = question.mediaUrl;
+    if (question.isDailyDouble) aq.isDailyDouble = question.isDailyDouble;
     await update(ref(db, `rooms/${roomCode}`), {
       activeQuestion: aq,
       buzz: null,
