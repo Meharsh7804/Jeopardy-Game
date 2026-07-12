@@ -195,7 +195,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                           }`}
                         >
                           <p className="font-bold text-sm text-text-main">{q.title}</p>
-                          <p className="text-xs text-text-muted mt-0.5">{q.categories.length} categories</p>
+                          <p className="text-xs text-text-muted mt-0.5">{q.description}</p>
                         </button>
                       ))}
                     </div>
