@@ -4,10 +4,20 @@ import { useRoom } from '../context/RoomContext';
 import { useQuizLibrary } from '../context/QuizLibraryContext';
 import type { Quiz, Question } from '../types/jeopardy';
 import {
-  Users, Copy, Check, Play, Trophy, Crown,
+  Users, Copy, Check, Play, Crown,
   Eye, X, ChevronRight, LogOut,
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
+import { PlayerAvatar } from '../utils/playerAvatar';
+
+const getGridColsClass = (count: number) => {
+  if (count <= 1) return 'grid-cols-1';
+  if (count === 2) return 'grid-cols-2';
+  if (count === 3) return 'grid-cols-3';
+  if (count === 4) return 'grid-cols-4';
+  if (count === 5) return 'grid-cols-5';
+  return 'grid-cols-6';
+};
 
 interface HostRoomProps {
   onLeave: () => void;
@@ -59,20 +69,20 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   return (
     <div className="min-h-screen flex flex-col">
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
-      <header className="glass-panel sticky top-0 z-40 px-6 py-3 flex items-center justify-between gap-4 rounded-b-2xl shadow-lg">
+      <header className="glass-panel sticky top-0 z-40 px-6 py-3 flex items-center justify-between gap-4 rounded-b-2xl">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-accent to-secondary-accent flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-primary-accent/15 border border-primary-accent/20 flex items-center justify-center">
             <span className="font-display font-extrabold text-sm text-text-main">Q</span>
           </div>
           <div>
-            <h1 className="font-display font-extrabold text-base text-text-main leading-none">Buzzing With Quizzing</h1>
+            <h1 className="font-bold text-base text-text-main leading-none">Buzzing With Quizzing</h1>
             <p className="text-[10px] text-text-muted uppercase tracking-wider">Host View</p>
           </div>
         </div>
 
         {/* Room code pill */}
         <div
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card-bg border border-white/10 cursor-pointer hover:border-primary-accent/40 transition"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card-bg border border-white/10 cursor-pointer hover:border-primary-accent/30 transition"
           onClick={handleCopyCode}
           title="Click to copy room code"
         >
@@ -108,6 +118,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             onClick={handleLeave}
             className="p-2 rounded-xl bg-card-bg border border-white/5 text-text-muted hover:text-text-main transition"
             title="Leave room"
+            aria-label="Leave room"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -131,12 +142,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                       : 'bg-card-bg/30 border-white/5'
                   }`}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                     {i === 0 && p.score > 0 ? (
                       <Crown className="w-3.5 h-3.5 text-[#FACC15] fill-[#FACC15] shrink-0" />
                     ) : (
                       <span className="text-[10px] text-text-muted font-bold w-3.5 text-center shrink-0">#{i + 1}</span>
                     )}
+                      <PlayerAvatar seed={p.id} name={p.name} size={24} className="shrink-0" />
                     <span className="font-semibold text-xs text-text-main truncate">{p.name}</span>
                   </div>
                   <span className="font-display font-extrabold text-sm text-text-main shrink-0">{p.score}</span>
@@ -176,25 +188,40 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center"
+                  className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center"
               >
-                <div className="p-5 rounded-2xl bg-card-bg/40 border border-white/5 inline-flex">
+                  <div className="p-5 rounded-2xl bg-card-bg/40 border border-white/5 inline-flex">
                   <Users className="w-10 h-10 text-primary-accent" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-display font-extrabold text-text-main">Waiting for Players</h2>
+                    <h2 className="text-2xl font-bold text-text-main">Waiting for Players</h2>
                   <p className="text-text-muted text-sm mt-2">
                     Share room code <span className="font-display font-bold text-primary-accent tracking-widest">{room.id}</span> with your players.
                     <br />
                     Press <strong className="text-text-main">Start Game</strong> when everyone has joined.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {gamePlayers.map((p) => (
-                    <div key={p.id} className="px-3 py-1.5 rounded-full bg-card-bg border border-white/10 text-xs font-semibold text-text-main">
-                      {p.name}
-                    </div>
-                  ))}
+                  <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {gamePlayers.map((p, index) => (
+                      <motion.div
+                        key={p.id}
+                        layout
+                        initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                        transition={{ duration: 0.22, delay: Math.min(index * 0.03, 0.18) }}
+                        className="rounded-2xl border border-white/5 bg-card-bg/50 p-3 text-left"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <PlayerAvatar seed={p.id} name={p.name} size={40} className="shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-text-main truncate">{p.name}</p>
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-text-muted mt-1">Waiting</p>
+                          </div>
+                          <span className="text-[10px] font-bold text-text-muted">#{index + 1}</span>
+                        </div>
+                      </motion.div>
+                    ))}
                 </div>
               </motion.div>
             )}
@@ -215,14 +242,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
                 {/* Board grid */}
                 <div
-                  className="grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${quiz.categories.length}, minmax(0, 1fr))` }}
+                  className={`grid gap-2 ${getGridColsClass(quiz.categories.length)}`}
                 >
                   {/* Category headers */}
                   {quiz.categories.map((cat) => (
                     <div
                       key={cat.id}
-                      className="glass-panel p-3 rounded-xl text-center font-display font-extrabold text-xs text-text-main uppercase tracking-wide min-h-[60px] flex items-center justify-center"
+                      className="glass-panel p-3 rounded-xl text-center font-bold text-xs text-text-main uppercase tracking-wide min-h-15 flex items-center justify-center"
                     >
                       {cat.name}
                     </div>
@@ -239,7 +265,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           key={q.id}
                           disabled={done}
                           onClick={() => handleOpenQuestion(q, cat.name)}
-                          className={`glass-panel rounded-xl p-4 font-display font-extrabold text-xl text-center transition-all duration-200 min-h-[70px] flex items-center justify-center ${
+                          className={`glass-panel rounded-xl p-4 font-bold text-xl text-center transition-all duration-200 min-h-17.5 flex items-center justify-center ${
                             done
                               ? 'opacity-20 cursor-not-allowed'
                               : 'text-[#FACC15] hover:bg-primary-accent/20 hover:scale-[1.03] cursor-pointer shadow hover:shadow-primary-accent/20'
@@ -314,6 +340,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           return (
                             <div key={pId} className={`flex items-center gap-3 p-3 rounded-xl border ${idx === 0 ? 'bg-[#FACC15]/10 border-[#FACC15]/40' : 'bg-card-bg border-white/5'}`}>
                               <div className="w-6 text-center font-bold text-text-muted text-xs">#{idx + 1}</div>
+                              <PlayerAvatar seed={p.id} name={p.name} size={28} className="shrink-0" />
                               <div className="flex-1">
                                 <p className="font-bold text-sm text-text-main">
                                   {idx === 0 ? <span className="text-[#FACC15]">{p.name}</span> : p.name}
@@ -372,7 +399,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center"
               >
-                <Trophy className="w-16 h-16 text-[#FACC15] fill-[#FACC15]/20" />
                 <h2 className="text-3xl font-display font-extrabold text-text-main">Game Over!</h2>
                 <div className="space-y-2 w-full max-w-sm">
                   {gamePlayers.map((p, i) => (
@@ -382,9 +408,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                         i === 0 ? 'bg-[#FACC15]/10 border-[#FACC15]/30' : 'bg-card-bg/30 border-white/5'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        {i === 0 && <Crown className="w-4 h-4 text-[#FACC15] fill-[#FACC15]" />}
-                        <span className="font-bold text-sm text-text-main">{p.name}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <PlayerAvatar seed={p.id} name={p.name} size={24} className="shrink-0" />
+                        <span className="font-bold text-sm text-text-main truncate">{p.name}</span>
                       </div>
                       <span className="font-display font-extrabold text-text-main">{p.score}</span>
                     </div>

@@ -57,49 +57,42 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary-accent/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/3 right-1/4 w-[300px] h-[300px] bg-secondary-accent/5 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative w-full max-w-lg space-y-8">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 overflow-hidden">
+      <div className="w-full max-w-xl space-y-8">
         {/* Hero */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-accent/10 border border-primary-accent/20 text-xs text-primary-accent font-semibold tracking-widest uppercase mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card-bg border border-white/5 text-xs text-text-muted font-semibold tracking-[0.2em] uppercase mb-2">
             <Zap className="w-3.5 h-3.5" />
             Live Multiplayer
           </div>
-          <h1 className="text-5xl font-display font-extrabold text-text-main tracking-tight leading-none">
-            Buzzing<span className="bg-gradient-to-r from-primary-accent to-secondary-accent bg-clip-text text-transparent"> With Quizzing</span>
+          <h1 className="text-5xl sm:text-6xl font-bold text-text-main tracking-tight leading-none">
+            Buzzing <span className="text-primary-accent">With Quizzing</span>
           </h1>
-          <p className="text-text-muted text-sm max-w-sm mx-auto">  
-            Host a live Jeopardy game <br></br>
-            <span className='font-bold text-text-main'>Ask questions</span>, <span className='font-bold text-text-main'>Buzz in</span>, and compete for points.
+          <p className="text-text-muted text-sm max-w-md mx-auto leading-6">
+            Host a live Jeopardy game. <span className='text-text-main font-semibold'>Ask questions</span>, <span className='text-text-main font-semibold'>buzz in</span>, and compete for points.
           </p>
         </div>
 
         {/* Tab card */}
-        <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl">
+        <div className="glass-panel rounded-2xl overflow-hidden">
           {/* Tab bar */}
-          <div className="flex border-b border-white/5">
+          <div className="flex border-b border-white/5 bg-black/10">
             {(['home', 'host', 'join'] as LobbyTab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => { setTab(t); setLocalError(''); }}
                 className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-widest transition-all duration-200 ${
                   tab === t
-                    ? 'bg-primary-accent/10 text-primary-accent border-b-2 border-primary-accent'
+                    ? 'bg-card-bg text-text-main border-b-2 border-primary-accent'
                     : 'text-text-muted hover:text-text-main'
                 }`}
               >
-                {t === 'home' ? 'Home' : t === 'host' ? '🎤 Host' : '🎮 Join'}
+                {t === 'home' ? 'Home' : t === 'host' ? 'Host' : 'Join'}
               </button>
             ))}
           </div>
 
-          <div className="p-6">
+          <div className="p-6 sm:p-7">
             <AnimatePresence mode="wait">
               {/* ── Home tab ────────────────────────────────────────────── */}
               {tab === 'home' && (
@@ -112,10 +105,10 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                 >
                   <button
                     onClick={() => setTab('host')}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-primary-accent/20 to-primary-accent/5 border border-primary-accent/30 hover:border-primary-accent/60 transition group"
+                      className="w-full flex items-center justify-between p-4 rounded-xl bg-card-bg/60 border border-white/5 hover:border-primary-accent/30 transition group"
                   >
                     <div className="flex items-center gap-3 text-left">
-                      <div className="p-2 rounded-lg bg-primary-accent/20 text-primary-accent">
+                        <div className="p-2 rounded-lg bg-primary-accent/10 text-primary-accent border border-primary-accent/15">
                         <Play className="w-5 h-5 fill-current" />
                       </div>
                       <div>
@@ -128,10 +121,10 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
 
                   <button
                     onClick={() => setTab('join')}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-secondary-accent/20 to-secondary-accent/5 border border-secondary-accent/30 hover:border-secondary-accent/60 transition group"
+                      className="w-full flex items-center justify-between p-4 rounded-xl bg-card-bg/60 border border-white/5 hover:border-primary-accent/30 transition group"
                   >
                     <div className="flex items-center gap-3 text-left">
-                      <div className="p-2 rounded-lg bg-secondary-accent/20 text-secondary-accent">
+                        <div className="p-2 rounded-lg bg-primary-accent/10 text-primary-accent border border-primary-accent/15">
                         <LogIn className="w-5 h-5" />
                       </div>
                       <div>
@@ -147,7 +140,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                     <div className="flex gap-2">
                       <button
                         onClick={onCreateQuiz}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card-bg border border-white/5 text-xs font-semibold text-text-muted hover:text-text-main transition"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card-bg border border-white/5 text-xs font-semibold text-text-muted hover:text-text-main transition"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         New Quiz
@@ -156,7 +149,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                         <button
                           key={q.id}
                           onClick={() => onEditQuiz(q)}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card-bg border border-white/5 text-xs font-semibold text-text-muted hover:text-text-main transition truncate max-w-[140px]"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card-bg border border-white/5 text-xs font-semibold text-text-muted hover:text-text-main transition truncate max-w-35"
                         >
                           <BookOpen className="w-3.5 h-3.5 shrink-0" />
                           <span className="truncate">{q.title}</span>
@@ -190,7 +183,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
 
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Select Quiz Pack</label>
-                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-50 overflow-y-auto pr-1">
                       {quizzes.map((q) => (
                         <button
                           key={q.id}
@@ -224,7 +217,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                   <button
                     onClick={handleHost}
                     disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-primary-accent to-secondary-accent hover:brightness-110 text-text-main font-bold rounded-xl shadow-lg shadow-primary-accent/20 transition disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 py-3.5 bg-primary-accent hover:bg-[#3f6cf5] text-white font-bold rounded-xl transition disabled:opacity-50"
                   >
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                     Create Room & Host
@@ -274,7 +267,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                   <button
                     onClick={handleJoin}
                     disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-secondary-accent to-primary-accent hover:brightness-110 text-text-main font-bold rounded-xl shadow-lg shadow-secondary-accent/20 transition disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 py-3.5 bg-primary-accent hover:bg-[#3f6cf5] text-white font-bold rounded-xl transition disabled:opacity-50"
                   >
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
                     Join Room
