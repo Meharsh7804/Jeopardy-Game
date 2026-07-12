@@ -36,7 +36,7 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
   quizToEdit,
   onClose,
 }) => {
-  const { saveQuiz } = useQuizLibrary();
+  const { saveQuiz, deleteQuiz } = useQuizLibrary();
 
   const [quiz, setQuiz] = useState<Quiz>(() => {
     if (quizToEdit) return JSON.parse(JSON.stringify(quizToEdit));
@@ -119,6 +119,16 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
+  const handleDelete = () => {
+    const confirmed = window.confirm(
+      `Delete "${quiz.title}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    deleteQuiz(quiz.id);
+    onClose();
+  };
+
   const exportJson = () => {
     const a = document.createElement("a");
     a.href =
@@ -155,6 +165,12 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleDelete}
+            className="flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-danger-accent/15 border border-danger-accent/25 text-danger-accent hover:bg-danger-accent/25 transition"
+          >
+            <Trash className="w-4 h-4" /> Delete Quiz
+          </button>
           <button
             onClick={exportJson}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-card-bg border border-white/5 text-text-muted hover:text-text-main transition"
