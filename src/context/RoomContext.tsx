@@ -73,7 +73,7 @@ interface RoomContextProps {
   openQuestion: (question: Question, categoryName: string) => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
   splitPoints: (playerIds: string[]) => Promise<void>;
-  revealAnswer: () => Promise<void>;
+  revealAnswer: (answerText: string) => Promise<void>;
   closeQuestion: () => Promise<void>;
   endGame: () => Promise<void>;
   kickPlayer: (playerId: string) => Promise<void>;
@@ -203,7 +203,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         categoryName,
         value: question.value,
         text: question.text,
-        answer: question.answer,
         type: question.type,
         revealAnswer: false,
       };
@@ -285,9 +284,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   // ── Host: reveal the answer text ─────────────────────────────────────────
-  const revealAnswer = useCallback(async () => {
+  const revealAnswer = useCallback(async (answerText: string) => {
     if (!roomCode || !room?.activeQuestion) return;
     await update(ref(db, `rooms/${roomCode}/activeQuestion`), {
+      answer: answerText,
       revealAnswer: true,
     });
     await update(ref(db, `rooms/${roomCode}`), {
@@ -395,15 +395,19 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   // ── Leave / cleanup ───────────────────────────────────────────────────────
   const leaveRoom = useCallback(async () => {
     if (roomCode) {
-      await remove(ref(db, `rooms/${roomCode}/players/${myId}`));
-      await remove(ref(db, `rooms/${roomCode}/buzzes/${myId}`));
+      if (room?.hostId === myId) {
+        await remove(ref(db, `rooms/${roomCode}`));
+      } else {
+        await remove(ref(db, `rooms/${roomCode}/players/${myId}`));
+        await remove(ref(db, `rooms/${roomCode}/buzzes/${myId}`));
+      }
     }
 
     if (listenerRef.current) listenerRef.current();
     setRoom(null);
     setRoomCode(null);
     setError(null);
-  }, [roomCode, myId]);
+  }, [roomCode, myId, room]);
 
   return (
     <RoomContext.Provider

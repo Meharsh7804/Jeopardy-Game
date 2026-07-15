@@ -58,7 +58,7 @@ export interface ActiveQuestion {
   categoryName: string;
   value: number;
   text: string;
-  answer: string;
+  answer?: string;
   type: QuestionType;
   mediaUrl?: string;
   isDailyDouble?: boolean;
