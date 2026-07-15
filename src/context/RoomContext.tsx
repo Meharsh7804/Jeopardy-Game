@@ -22,6 +22,7 @@ import {
   onValue,
   remove,
   onDisconnect,
+  runTransaction,
 } from "firebase/database";
 import type {
   Room,
@@ -53,6 +54,21 @@ const sanitize = (obj: any): any => {
   }
   return obj;
 };
+
+const normalizeRoomPlayer = (
+  playerId: string,
+  rawPlayer: Partial<RoomPlayer> | null | undefined,
+): RoomPlayer => ({
+  id: playerId,
+  name:
+    typeof rawPlayer?.name === "string" && rawPlayer.name.trim()
+      ? rawPlayer.name.trim()
+      : "Player",
+  score: typeof rawPlayer?.score === "number" ? rawPlayer.score : 0,
+  joinedAt:
+    typeof rawPlayer?.joinedAt === "number" ? rawPlayer.joinedAt : Date.now(),
+  isHost: !!rawPlayer?.isHost,
+});
 
 // ─── context shape ────────────────────────────────────────────────────────────
 
@@ -118,7 +134,26 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       roomRef,
       (snap) => {
         if (snap.exists()) {
-          setRoom(snap.val() as Room);
+          const rawRoom = snap.val() as Room;
+          const normalizedPlayers = Object.fromEntries(
+            Object.entries(rawRoom.players || {}).map(([playerId, rawPlayer]) => [
+              playerId,
+              normalizeRoomPlayer(playerId, rawPlayer),
+            ]),
+          );
+
+          const normalizedBuzzes = Object.fromEntries(
+            Object.entries(rawRoom.buzzes || {}).filter(
+              ([playerId, order]) =>
+                !!normalizedPlayers[playerId] && typeof order === "number",
+            ),
+          ) as Record<string, number>;
+
+          setRoom({
+            ...rawRoom,
+            players: normalizedPlayers,
+            buzzes: normalizedBuzzes,
+          });
           setError(null);
         } else {
           setRoom(null);
@@ -162,6 +197,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           players: { [myId]: hostPlayer },
           completedQuestions: {},
           activeQuestion: null,
+          buzzOrderCounter: 0,
           createdAt: Date.now(),
         };
 
@@ -207,6 +243,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       await update(ref(db, `rooms/${roomCode}`), {
         activeQuestion: aq,
         buzzes: null as any,
+        buzzOrderCounter: 0,
         phase: "buzzing" as RoomPhase,
       });
     },
@@ -222,12 +259,21 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       const sortedBuzzes = Object.entries(room.buzzes || {}).sort(
         (a, b) => a[1] - b[1],
       );
-      const buzzPlayerId = sortedBuzzes[0]?.[0];
+      const buzzPlayerId = sortedBuzzes.find(
+        ([playerId]) => !!room.players[playerId] && !room.players[playerId].isHost,
+      )?.[0];
       if (!buzzPlayerId) return;
 
       const value = room.activeQuestion?.value ?? 0;
       const delta = correct ? value : -value;
-      const currentScore = room.players[buzzPlayerId]?.score ?? 0;
+      const currentPlayer = room.players[buzzPlayerId];
+      if (!currentPlayer) {
+        await update(ref(db, `rooms/${roomCode}`), {
+          [`buzzes/${buzzPlayerId}`]: null,
+        });
+        return;
+      }
+      const currentScore = currentPlayer.score;
 
       const updates: Record<string, any> = {
         [`players/${buzzPlayerId}/score`]: currentScore + delta,
@@ -286,23 +332,28 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const snap = await get(ref(db, `rooms/${upperCode}`));
         if (!snap.exists()) throw new Error(`Room "${upperCode}" not found.`);
+        const existingRoom = snap.val() as Room;
+        const existingPlayer = existingRoom.players?.[myId];
 
         const player: RoomPlayer = {
           id: myId,
-          name: playerName,
-          score: 0,
-          joinedAt: Date.now(),
+          name: playerName.trim(),
+          score: existingPlayer?.score ?? 0,
+          joinedAt: existingPlayer?.joinedAt ?? Date.now(),
           isHost: false,
         };
 
         const playerRef = ref(db, `rooms/${upperCode}/players/${myId}`);
         const buzzRef = ref(db, `rooms/${upperCode}/buzzes/${myId}`);
 
-        await update(ref(db, `rooms/${upperCode}/players`), { [myId]: player });
+        await update(ref(db, `rooms/${upperCode}`), {
+          [`players/${myId}`]: player,
+          [`buzzes/${myId}`]: null,
+        });
         await onDisconnect(playerRef).remove();
         await onDisconnect(buzzRef).remove();
-        setMyName(playerName);
-        sessionStorage.setItem("jeopardy_player_name", playerName);
+        setMyName(player.name);
+        sessionStorage.setItem("jeopardy_player_name", player.name);
         setRoomCode(upperCode);
       } catch (e: any) {
         setError(e.message);
@@ -322,8 +373,32 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     // Already buzzed
     if (room.buzzes?.[myId]) return;
 
-    await update(ref(db, `rooms/${roomCode}`), {
-      [`buzzes/${myId}`]: Date.now(),
+    await runTransaction(ref(db, `rooms/${roomCode}`), (currentRoom: Room | null) => {
+      if (
+        !currentRoom ||
+        currentRoom.phase !== "buzzing" ||
+        !currentRoom.players?.[myId] ||
+        currentRoom.players[myId].isHost
+      ) {
+        return currentRoom;
+      }
+
+      const currentBuzzes = currentRoom.buzzes || {};
+      if (typeof currentBuzzes[myId] === "number") return currentRoom;
+
+      const nextOrder =
+        typeof currentRoom.buzzOrderCounter === "number"
+          ? currentRoom.buzzOrderCounter + 1
+          : Object.keys(currentBuzzes).length + 1;
+
+      return {
+        ...currentRoom,
+        buzzOrderCounter: nextOrder,
+        buzzes: {
+          ...currentBuzzes,
+          [myId]: nextOrder,
+        },
+      };
     });
   }, [roomCode, room, myId]);
 
