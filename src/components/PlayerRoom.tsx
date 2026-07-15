@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRoom } from "../context/RoomContext";
-import { Zap, Trophy, Crown, LogOut, Users } from "lucide-react";
+import { Zap, Trophy, Crown, LogOut, Users, X, Info } from "lucide-react";
 import { soundManager } from "../utils/sound";
 import { db } from "../firebase";
 import { ref, get } from "firebase/database";
@@ -24,9 +24,9 @@ interface PlayerRoomProps {
 export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const { room, myId, myName, buzz, leaveRoom } = useRoom();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
-    null,
-  );
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  // Fix #5: category description modal
+  const [categoryModalId, setCategoryModalId] = useState<string | null>(null);
 
   const myPlayer = room?.players?.[myId];
   const hasBuzzed = !!room?.buzzes?.[myId];
@@ -54,6 +54,9 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
   const selectedCategory =
     quiz?.categories.find((cat) => cat.id === selectedCategoryId) ?? null;
+  const categoryModalData = categoryModalId
+    ? quiz?.categories.find((c) => c.id === categoryModalId) ?? null
+    : null;
 
   const handleBuzz = async () => {
     if (hasBuzzed || room?.phase !== "buzzing") return;
@@ -198,14 +201,16 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                   <div
                     className={`grid gap-2 ${getGridColsClass(quiz.categories.length)}`}
                   >
+                    {/* Fix #5: category header opens modal */}
                     {quiz.categories.map((cat) => (
                       <button
                         key={cat.id}
                         type="button"
-                        onClick={() => setSelectedCategoryId(cat.id)}
-                        className={`glass-panel p-2 rounded-xl text-center font-bold text-[10px] text-text-main uppercase tracking-wide min-h-10 flex items-center justify-center transition ${selectedCategoryId === cat.id ? "ring-2 ring-primary-accent/60 bg-primary-accent/10" : "hover:bg-primary-accent/10"}`}
+                        onClick={() => setCategoryModalId(cat.id)}
+                        className="glass-panel p-2 rounded-xl text-center font-bold text-[10px] text-text-main uppercase tracking-wide min-h-10 flex items-center justify-center gap-1 transition hover:bg-primary-accent/10"
                       >
                         {cat.name}
+                        {cat.description?.trim() && <Info className="w-2.5 h-2.5 text-text-muted shrink-0" />}
                       </button>
                     ))}
                     {Array.from({
@@ -227,16 +232,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     )}
                   </div>
 
-                  <div className="glass-panel p-4 rounded-2xl border border-white/5 text-left">
-                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-[0.24em] mb-1">
-                      Category description
-                    </p>
-                    <p className="text-sm text-text-main">
-                      {selectedCategory?.description?.trim()
-                        ? selectedCategory.description
-                        : "No description added for this category yet."}
-                    </p>
-                  </div>
+                  {/* Fix #5: removed inline description — now in modal */}
                 </div>
               )}
 
@@ -307,7 +303,8 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                       className="max-h-36 mx-auto rounded-xl object-contain"
                     />
                   )}
-                <p className="text-lg font-display font-semibold text-text-main leading-relaxed">
+                {/* Fix #4: preserve line breaks */}
+                <p className="text-lg font-display font-semibold text-text-main leading-relaxed whitespace-pre-wrap">
                   {room.activeQuestion.text}
                 </p>
               </div>
@@ -405,7 +402,8 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               className="w-full space-y-4"
             >
               <div className="glass-panel p-6 rounded-2xl text-center space-y-3">
-                <p className="text-base font-display font-semibold text-text-muted">
+                {/* Fix #4: preserve line breaks */}
+                <p className="text-base font-display font-semibold text-text-muted whitespace-pre-wrap">
                   {room.activeQuestion.text}
                 </p>
                 <div className="p-4 rounded-xl bg-success-accent/10 border border-success-accent/30">
@@ -473,6 +471,42 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Fix #5: Category description modal */}
+      <AnimatePresence>
+        {categoryModalData && (
+          <motion.div
+            key="cat-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setCategoryModalId(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="glass-panel rounded-2xl p-6 max-w-md w-full space-y-3 relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setCategoryModalId(null)}
+                className="absolute top-4 right-4 p-1.5 rounded-lg bg-card-bg border border-white/10 text-text-muted hover:text-text-main transition"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <p className="text-[10px] font-bold text-primary-accent uppercase tracking-widest">Category</p>
+              <h3 className="text-xl font-display font-extrabold text-text-main pr-8">{categoryModalData.name}</h3>
+              <p className="text-sm text-text-muted leading-relaxed whitespace-pre-wrap">
+                {categoryModalData.description?.trim() || "No description added for this category."}
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

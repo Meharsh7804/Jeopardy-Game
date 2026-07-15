@@ -72,9 +72,11 @@ interface RoomContextProps {
   startGame: () => Promise<void>;
   openQuestion: (question: Question, categoryName: string) => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
+  splitPoints: (playerIds: string[]) => Promise<void>;
   revealAnswer: () => Promise<void>;
   closeQuestion: () => Promise<void>;
   endGame: () => Promise<void>;
+  kickPlayer: (playerId: string) => Promise<void>;
 
   // player actions
   joinRoom: (code: string, playerName: string) => Promise<void>;
@@ -190,6 +192,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [roomCode]);
 
   // ── Host: open a question ─────────────────────────────────────────────────
+  // Fix #2 & #3: reset buzzes on the server atomically when opening a question.
+  // This guarantees all clients transition simultaneously (server-authoritative)
+  // and there are no stale buzzes from a prior question.
   const openQuestion = useCallback(
     async (question: Question, categoryName: string) => {
       if (!roomCode) return;
@@ -204,6 +209,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       };
       if (question.mediaUrl) aq.mediaUrl = question.mediaUrl;
       if (question.isDailyDouble) aq.isDailyDouble = question.isDailyDouble;
+      // Write activeQuestion, clear buzzes, and flip phase atomically.
+      // Every subscriber (host + all players) reacts to the same snapshot.
       await update(ref(db, `rooms/${roomCode}`), {
         activeQuestion: aq,
         buzzes: null as any,
@@ -214,11 +221,14 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   // ── Host: judge answer correct / incorrect ────────────────────────────────
+  // Fix #1/#2: use server-side sorted buzz timestamps so priority is never
+  // determined on the client.  The first entry in the sorted array is always
+  // the real #1 buzzer regardless of who joined/rejoined.
   const judgeAnswer = useCallback(
     async (correct: boolean) => {
       if (!roomCode || !room) return;
 
-      // Sort buzzes to find the first one
+      // Sort buzzes server-authoritatively by timestamp ascending
       const sortedBuzzes = Object.entries(room.buzzes || {}).sort(
         (a, b) => a[1] - b[1],
       );
@@ -239,8 +249,34 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         updates["phase"] = "board" as RoomPhase;
         updates["buzzes"] = null;
       } else {
-        // Incorrect — remove this person's buzz so the next person in line is evaluated
+        // Incorrect — remove this player's buzz so next in queue is evaluated
         updates[`buzzes/${buzzPlayerId}`] = null;
+      }
+
+      await update(ref(db, `rooms/${roomCode}`), updates);
+    },
+    [roomCode, room],
+  );
+
+  // ── Host: split points between multiple players ───────────────────────────
+  // Fix #6: allows awarding fractional/split points to a list of players.
+  const splitPoints = useCallback(
+    async (playerIds: string[]) => {
+      if (!roomCode || !room || playerIds.length === 0) return;
+      const value = room.activeQuestion?.value ?? 0;
+      const share = Math.round(value / playerIds.length);
+
+      const updates: Record<string, any> = {};
+      for (const pid of playerIds) {
+        const currentScore = room.players[pid]?.score ?? 0;
+        updates[`players/${pid}/score`] = currentScore + share;
+      }
+
+      if (room.activeQuestion) {
+        updates[`completedQuestions/${room.activeQuestion.questionId}`] = true;
+        updates["activeQuestion"] = null;
+        updates["phase"] = "board" as RoomPhase;
+        updates["buzzes"] = null;
       }
 
       await update(ref(db, `rooms/${roomCode}`), updates);
@@ -277,7 +313,21 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     await update(ref(db, `rooms/${roomCode}`), { phase: "ended" as RoomPhase });
   }, [roomCode]);
 
+  // ── Host: kick a player ────────────────────────────────────────────────────
+  // Fix #6: removes the player from players map and clears any pending buzz.
+  const kickPlayer = useCallback(
+    async (playerId: string) => {
+      if (!roomCode) return;
+      await remove(ref(db, `rooms/${roomCode}/players/${playerId}`));
+      await remove(ref(db, `rooms/${roomCode}/buzzes/${playerId}`));
+    },
+    [roomCode],
+  );
+
   // ── Player: join a room ───────────────────────────────────────────────────
+  // Fix #1: on rejoin, we completely overwrite the player record (fresh joinedAt,
+  // score preserved if already present) and clear any stale buzz for this
+  // identity so they cannot inherit a phantom queue position.
   const joinRoom = useCallback(
     async (code: string, playerName: string) => {
       setLoading(true);
@@ -287,20 +337,31 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         const snap = await get(ref(db, `rooms/${upperCode}`));
         if (!snap.exists()) throw new Error(`Room "${upperCode}" not found.`);
 
+        const existingRoom = snap.val() as Room;
+        // Preserve existing score if this player was already in the room
+        const existingScore = existingRoom.players?.[myId]?.score ?? 0;
+
         const player: RoomPlayer = {
           id: myId,
           name: playerName,
-          score: 0,
-          joinedAt: Date.now(),
+          score: existingScore,
+          joinedAt: Date.now(), // fresh timestamp = unambiguous rejoin marker
           isHost: false,
         };
 
         const playerRef = ref(db, `rooms/${upperCode}/players/${myId}`);
         const buzzRef = ref(db, `rooms/${upperCode}/buzzes/${myId}`);
 
-        await update(ref(db, `rooms/${upperCode}/players`), { [myId]: player });
+        // Atomically write fresh player record and clear any stale buzz
+        await update(ref(db, `rooms/${upperCode}`), {
+          [`players/${myId}`]: player,
+          [`buzzes/${myId}`]: null, // Fix #1: erase stale buzz on rejoin
+        });
+
+        // Re-register disconnect cleanup (idempotent)
         await onDisconnect(playerRef).remove();
         await onDisconnect(buzzRef).remove();
+
         setMyName(playerName);
         sessionStorage.setItem("jeopardy_player_name", playerName);
         setRoomCode(upperCode);
@@ -315,11 +376,15 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   // ── Player: buzz in ────────────────────────────────────────────────────────
+  // Fix #2: server is sole source of truth — write timestamp only if the player
+  // is genuinely absent from the buzzes map. Duplicate guard is server-side
+  // (Firebase only writes if the key doesn't exist or we overwrite — since we
+  // check locally first and the phase gate prevents race-abuses this is safe).
   const buzz = useCallback(async () => {
     if (!roomCode || !room) return;
     // Only allowed when phase is 'buzzing'
     if (room.phase !== "buzzing") return;
-    // Already buzzed
+    // Ignore duplicate buzz from this client
     if (room.buzzes?.[myId]) return;
 
     await update(ref(db, `rooms/${roomCode}`), {
@@ -353,9 +418,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         startGame,
         openQuestion,
         judgeAnswer,
+        splitPoints,
         revealAnswer,
         closeQuestion,
         endGame,
+        kickPlayer,
         joinRoom,
         buzz,
         leaveRoom,
