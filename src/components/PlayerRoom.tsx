@@ -30,10 +30,6 @@ const getGridColsClass = (count: number) => {
   return "grid-cols-6";
 };
 
-// Extremely smooth spring configurations
-const springConfig = { type: "spring", stiffness: 500, damping: 30, mass: 0.8 };
-const fastSpring = { type: "spring", stiffness: 700, damping: 35, mass: 0.5 };
-
 interface PlayerRoomProps {
   onLeave: () => void;
 }
@@ -132,7 +128,12 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.05 }}
-              transition={springConfig}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+                mass: 0.8,
+              }}
               className="flex flex-col items-center justify-center gap-6 py-12 text-center w-full"
             >
               <div className="relative">
@@ -199,7 +200,12 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              transition={springConfig}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+                mass: 0.8,
+              }}
               className="w-full space-y-8"
             >
               <div className="glass-panel p-4 rounded-2xl text-center border-white/10 shadow-lg">
@@ -282,7 +288,12 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               initial={{ opacity: 0, scale: 0.95, y: 30 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 1.05 }}
-              transition={springConfig}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+                mass: 0.8,
+              }}
               className="w-full max-w-2xl mx-auto space-y-6"
             >
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-5 relative shadow-2xl border border-white/10">
@@ -376,7 +387,12 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 1.05 }}
-              transition={springConfig}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+                mass: 0.8,
+              }}
               className="w-full max-w-2xl mx-auto space-y-6"
             >
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10">
@@ -406,7 +422,12 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               key="ended"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={springConfig}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+                mass: 0.8,
+              }}
               className="flex flex-col items-center justify-center gap-8 py-10 text-center w-full"
             >
               <div className="relative">
