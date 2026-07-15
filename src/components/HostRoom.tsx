@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { soundManager } from "../utils/sound";
 import { PlayerAvatar } from "../utils/playerAvatar";
-import type { Transition } from "framer-motion";
 
 const getGridColsClass = (count: number) => {
   if (count <= 1) return "grid-cols-1";
@@ -200,7 +199,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.05 }}
-              
+              transition={{type: "spring",stiffness: 300,damping: 25,mass: 0.8}}
               className="p-8 sm:p-12 w-full max-w-7xl mx-auto flex flex-col items-center justify-center min-h-[80vh] gap-10"
             >
               <div className="text-center space-y-4">
@@ -246,6 +245,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                             initial={{ opacity: 0, scale: 0.5, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 300,
+                              damping: 25,
+                              mass: 0.8,
+                              delay: Math.min(i * 0.05, 0.2)
+                            }}
                             className="flex flex-col items-center gap-3 p-6 rounded-3xl glass-panel border border-white/10 shadow-xl group hover:border-primary-accent/40 transition-colors min-w-[140px]"
                           >
                              <PlayerAvatar seed={p.id} name={p.name} size={80} className="rounded-full ring-4 ring-white/5 group-hover:ring-primary-accent/30 transition-all drop-shadow-xl" />
@@ -287,6 +293,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
+              transition={{
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 25,
+                  mass: 0.8,
+                }}
               className="p-4 md:p-6 max-w-7xl mx-auto w-full flex flex-col xl:flex-row gap-6 items-start"
             >
               <div className="flex-1 w-full space-y-4">
@@ -355,6 +367,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                          damping: 50,
+                          mass: 0.8,
+                        }}
                         className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
                       >
                         <div className="flex items-center gap-3 min-w-0">
@@ -382,6 +400,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               initial={{ opacity: 0, scale: 0.95, y: 30 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 1.05 }}
+              transition={{
+                type: "spring",
+                stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                damping: 50,
+                mass: 0.8,
+              }}
               className="p-6 md:p-8 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-8 items-start"
             >
               {/* Question Card */}
@@ -430,6 +454,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     <motion.div
                       initial={{ opacity: 0, scale: 0.9, y: 20 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                        damping: 50,
+                        mass: 0.8,
+                      }}
                       className="mt-10 p-8 rounded-3xl bg-success-accent/15 border border-success-accent/30 shadow-[0_0_40px_rgba(16,185,129,0.2)] text-left relative overflow-hidden"
                     >
                       <div className="absolute top-0 left-0 w-2 h-full bg-success-accent" />
@@ -531,6 +561,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                initial={{ opacity: 0, x: 20, scale: 0.9 }}
                                animate={{ opacity: 1, x: 0, scale: 1 }}
                                exit={{ opacity: 0, scale: 0.8 }}
+                               transition={{
+                                type: "spring",
+                                stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                                damping: 50,
+                                mass: 0.8,
+                               }}
                                key={pId}
                                className={`flex flex-col gap-3 p-4 rounded-2xl border transition-all ${
                                  isFirst 
@@ -599,6 +635,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               key="ended"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
+              transition={{
+                type: "spring",
+                stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                damping: 50,
+                mass: 0.8,
+              }}
               className="flex flex-col items-center justify-center min-h-[75vh] gap-10 text-center p-8 w-full"
             >
               <div className="relative">
@@ -614,6 +656,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   <motion.div
                     initial={{ opacity: 0, x: -30 }}
                     animate={{ opacity: 1, x: 0 }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                      damping: 50,
+                      mass: 0.8,
+                      delay: i * 0.1
+                    }}
                     key={p.id}
                     className={`flex items-center justify-between px-8 py-6 rounded-3xl border ${
                       i === 0 
@@ -661,6 +710,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{
+                type: "spring",
+                stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                damping: 50,
+                mass: 0.8,
+              }}
               className="glass-panel-heavy rounded-[2.5rem] p-10 max-w-lg w-full space-y-6 relative border border-white/20 shadow-[0_0_80px_rgba(0,0,0,0.6)]"
               onClick={(e) => e.stopPropagation()}
             >
