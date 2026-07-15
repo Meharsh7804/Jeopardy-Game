@@ -4,7 +4,6 @@ import { useRoom } from "../context/RoomContext";
 import { useQuizLibrary } from "../context/QuizLibraryContext";
 import type { Quiz, Question } from "../types/jeopardy";
 import {
-  Users,
   Copy,
   Check,
   Play,
@@ -14,7 +13,6 @@ import {
   ChevronRight,
   LogOut,
   Scissors,
-  UserX,
   Info,
   Zap,
   Trophy
@@ -43,10 +41,6 @@ const FUN_FACTS = [
   "Trivia: A group of flamingos is called a 'flamboyance'.",
   "Fun Fact: The unicorn is the national animal of Scotland."
 ];
-
-// Extremely smooth spring configurations
-const springConfig = { type: "spring", stiffness: 500, damping: 30, mass: 0.8 };
-const fastSpring = { type: "spring", stiffness: 700, damping: 35, mass: 0.5 };
 
 interface HostRoomProps {
   onLeave: () => void;
