@@ -420,23 +420,18 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     </span>
                   </div>
 
-                  {room.activeQuestion.mediaUrl && room.activeQuestion.type !== "text" && (
+                  {room.activeQuestion.mediaUrl &&
+                    room.activeQuestion.type !== "text" && (
                     <div className="relative rounded-3xl overflow-hidden border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)] mx-auto w-fit max-h-72 bg-black">
-                       <img
-                         src={room.activeQuestion.mediaUrl ? (
-                          <img
-                            src={room.activeQuestion.mediaUrl}
-                            alt=""
-                            className="max-h-72 object-contain"
-                          onError={(e) => {
-                            console.error("Image failed to load");
-                            e.currentTarget.style.display = "none";
-                          }}
-                        />
-                        ) : null}
-                         alt="Question media"
-                         className="max-h-72 object-contain"
-                       />
+                      <img
+                        src={room.activeQuestion.mediaUrl}
+                        alt="Question media"
+                        className="max-h-72 object-contain"
+                        onError={(e) => {
+                          console.error("Image failed to load");
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
                     </div>
                   )}
 
