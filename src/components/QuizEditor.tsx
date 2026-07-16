@@ -674,91 +674,81 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
                     </div>
 
                     {/* Media type + upload */}
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-black/20 p-4 rounded-2xl border border-white/5">
-                      <div className="flex bg-black/40 border border-white/10 p-1 rounded-xl shadow-inner shrink-0">
-                        {(["text", "image", "both"] as const).map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => setQ(activeCatIdx, qIdx, "type", t)}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                              q.type === t
-                                ? "bg-white/10 text-white shadow-sm"
-                                : "text-text-muted hover:text-white"
-                            }`}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
+<div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-black/20 p-4 rounded-2xl border border-white/5">
+  <div className="flex bg-black/40 border border-white/10 p-1 rounded-xl shadow-inner shrink-0">
+    {(["text", "image", "both"] as const).map((t) => (
+      <button
+        key={t}
+        type="button"
+        onClick={() => setQ(activeCatIdx, qIdx, "type", t)}
+        className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+          q.type === t
+            ? "bg-white/10 text-white shadow-sm"
+            : "text-text-muted hover:text-white"
+        }`}
+      >
+        {t}
+      </button>
+    ))}
+  </div>
 
-                      {q.type !== "text" && (
-                        <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
-                          <div className="flex-1 relative">
-                            <input
-                              type="text"
-                              placeholder="https://example.com/image.jpg"
-                              value={q.mediaUrl || ""}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
+  {q.type !== "text" && (
+    <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="flex-1 relative">
+        <input
+          type="text"
+          placeholder="https://example.com/image.jpg"
+          value={q.mediaUrl || ""}
+          onChange={(e) => {
+            // ✅ FIXED: Directly set the mediaUrl to the typed/pasted text
+            setQ(activeCatIdx, qIdx, "mediaUrl", e.target.value);
+          }}
+          className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none focus:border-primary-accent transition-colors"
+        />
+        <ImageIcon className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+      </div>
 
-                                if (!file) return;
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 cursor-pointer transition text-xs font-bold shrink-0">
+          <Upload className="w-4 h-4" />
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                handleImageUpload(activeCatIdx, qIdx, file);
+              }
+              // Optional: Reset the input value so the user can upload the same file again if they delete it
+              e.target.value = "";
+            }}
+          />
+          Upload
+        </label>
 
-                                handleImageUpload(activeCatIdx, qIdx, file);
-
-                                e.target.value = "";
-                              }}
-                              className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none focus:border-primary-accent transition-colors"
-                            />
-                            <ImageIcon className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 cursor-pointer transition text-xs font-bold shrink-0">
-                              <Upload className="w-4 h-4" />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) =>
-                                  e.target.files?.[0] &&
-                                  handleImageUpload(
-                                    activeCatIdx,
-                                    qIdx,
-                                    e.target.files[0],
-                                  )
-                                }
-                              />
-                              Upload
-                            </label>
-
-                            {q.mediaUrl && (
-                              <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black group">
-                                <img
-                                  src={q.mediaUrl}
-                                  alt="Preview"
-                                  className="w-full h-full object-cover"
-                                />
-                                <button
-                                  onClick={() =>
-                                    setQ(
-                                      activeCatIdx,
-                                      qIdx,
-                                      "mediaUrl",
-                                      undefined,
-                                    )
-                                  }
-                                  title="Remove attachment"
-                                  className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <X className="w-4 h-4 text-danger-accent" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+        {q.mediaUrl && (
+          <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black group">
+            <img
+              src={q.mediaUrl}
+              alt="Preview"
+              className="w-full h-full object-cover"
+            />
+            <button
+              onClick={() =>
+                setQ(activeCatIdx, qIdx, "mediaUrl", undefined)
+              }
+              title="Remove attachment"
+              className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <X className="w-4 h-4 text-danger-accent" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )}
+</div>
                   </div>
                 ))}
               </div>
