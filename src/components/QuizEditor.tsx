@@ -169,8 +169,8 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     return;
   }
 
-  if (file.size > 2 * 1024 * 1024) {
-    alert("Image must be under 2 MB.");
+  if (file.size > 500 * 1024) {
+    alert("Image must be under 500 KB.");
     return;
   }
 
@@ -699,14 +699,15 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
                               type="text"
                               placeholder="https://example.com/image.jpg"
                               value={q.mediaUrl || ""}
-                              onChange={(e) =>
-                                setQ(
-                                  activeCatIdx,
-                                  qIdx,
-                                  "mediaUrl",
-                                  e.target.value,
-                                )
-                              }
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+
+                                if (!file) return;
+
+                                handleImageUpload(activeCatIdx, qIdx, file);
+
+                                e.target.value = "";
+                              }}
                               className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none focus:border-primary-accent transition-colors"
                             />
                             <ImageIcon className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
