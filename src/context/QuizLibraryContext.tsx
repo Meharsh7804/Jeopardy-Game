@@ -55,14 +55,7 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const next = idx > -1
         ? prev.map((q, i) => (i === idx ? quiz : q))
         : [quiz, ...prev];
-      try {
-    localStorage.setItem(QUIZZES_KEY, JSON.stringify(next));
-    } catch (error) {
-    console.error("Failed to save quiz:", error);
-    alert(
-        "Quiz is too large to save. Uploaded images are exceeding browser storage."
-      );
-    }
+      localStorage.setItem(QUIZZES_KEY, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -70,11 +63,7 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const deleteQuiz = useCallback((id: string) => {
     setQuizzes((prev) => {
       const next = prev.filter((q) => q.id !== id);
-      try {
-    localStorage.setItem(QUIZZES_KEY, JSON.stringify(next));
-    } catch (error) {
-    console.error(error);
-    }
+      localStorage.setItem(QUIZZES_KEY, JSON.stringify(next));
       return next;
     });
   }, []);

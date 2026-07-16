@@ -169,8 +169,8 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     return;
   }
 
-  if (file.size > 500 * 1024) {
-    alert("Image must be under 500 KB.");
+  if (file.size > 2 * 1024 * 1024) {
+    alert("Image must be under 2 MB.");
     return;
   }
 
