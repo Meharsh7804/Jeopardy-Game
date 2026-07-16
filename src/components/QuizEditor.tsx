@@ -157,16 +157,37 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     setQ(catIdx, qIdx, "isDailyDouble", false);
   };
 
-  const handleImageUpload = (catIdx: number, qIdx: number, file: File) => {
-    if (file.size > 2 * 1024 * 1024) {
-      alert("Image must be under 2 MB");
-      return;
+  const handleImageUpload = (
+  catIdx: number,
+  qIdx: number,
+  file: File
+) => {
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    alert("Please select an image.");
+    return;
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    alert("Image must be under 2 MB.");
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    if (typeof reader.result === "string") {
+      setQ(catIdx, qIdx, "mediaUrl", reader.result);
     }
-    const r = new FileReader();
-    r.onload = (e) =>
-      setQ(catIdx, qIdx, "mediaUrl", e.target?.result as string);
-    r.readAsDataURL(file);
   };
+
+  reader.onerror = () => {
+    alert("Unable to read image.");
+  };
+
+  reader.readAsDataURL(file);
+};
 
   const handleSave = () => {
     saveQuiz(quiz);
