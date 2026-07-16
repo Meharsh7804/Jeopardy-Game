@@ -157,7 +157,7 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     setQ(catIdx, qIdx, "isDailyDouble", false);
   };
 
-  const handleImageUpload = (
+const handleImageUpload = (
   catIdx: number,
   qIdx: number,
   file: File
@@ -174,19 +174,15 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     return;
   }
 
-  const reader = new FileReader();
-
-  reader.onload = () => {
-    if (typeof reader.result === "string") {
-      setQ(catIdx, qIdx, "mediaUrl", reader.result);
-    }
-  };
-
-  reader.onerror = () => {
-    alert("Unable to read image.");
-  };
-
-  reader.readAsDataURL(file);
+  // Creates a lightweight, temporary local URL instantly (no async reader needed)
+  const previewUrl = URL.createObjectURL(file);
+  
+  // Update your state with the lightweight URL
+  setQ(catIdx, qIdx, "mediaUrl", previewUrl);
+  
+  // Optional: If you need to send the actual file to a backend API later, 
+  // you should also save the raw `file` object in your state, not just the URL.
+  // setQ(catIdx, qIdx, "rawFile", file); 
 };
 
   const handleSave = () => {
