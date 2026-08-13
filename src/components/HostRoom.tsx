@@ -53,6 +53,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     openQuestion,
     judgeAnswer,
     splitPoints,
+    undoLastScoreChange,
     revealAnswer,
     closeQuestion,
     endGame,
@@ -67,6 +68,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   const [splitSelected, setSplitSelected] = useState<string[]>([]);
   const [showSplit, setShowSplit] = useState(false);
   const [factIndex, setFactIndex] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     if (room?.phase !== "lobby") return;
@@ -138,6 +140,18 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     onLeave();
   };
 
+  const scoreHistoryEntries = Object.values(room.scoreHistory || {}).sort(
+    (a, b) => b.timestamp - a.timestamp,
+  );
+
+  const handleUndo = async () => {
+    const last = scoreHistoryEntries[0];
+    if (!last) return;
+    const playerName = room.players[last.teamId || ""]?.name ?? "that player";
+    if (!confirm(`Undo: "${last.description}"?\nThis will reset ${playerName}'s score back to ${last.previousScore}.`)) return;
+    await undoLastScoreChange();
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-primary-bg relative overflow-hidden text-white font-sans">
       {/* Background Ambience */}
@@ -172,6 +186,24 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
         </motion.div>
 
         <div className="flex items-center gap-3">
+          {scoreHistoryEntries.length > 0 && (
+            <>
+              <button
+                onClick={() => setShowHistory(true)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted text-sm font-bold hover:bg-white/10 hover:text-white transition-colors"
+                title="View score history"
+              >
+                History
+              </button>
+              <button
+                onClick={handleUndo}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-warning-accent/10 border border-warning-accent/20 text-warning-accent text-sm font-bold hover:bg-warning-accent/20 transition-colors"
+                title="Undo the most recent score change"
+              >
+                Undo Last
+              </button>
+            </>
+          )}
           {["board", "question", "buzzing", "judging", "answer"].includes(room.phase) && (
             <button
               onClick={endGame}
@@ -254,8 +286,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                             }}
                             className="flex flex-col items-center gap-3 p-6 rounded-3xl glass-panel border border-white/10 shadow-xl group hover:border-primary-accent/40 transition-colors min-w-[140px]"
                           >
-                             <PlayerAvatar seed={p.id} name={p.name} size={80} className="rounded-full ring-4 ring-white/5 group-hover:ring-primary-accent/30 transition-all drop-shadow-xl" />
-                             <span className="font-display font-bold text-lg text-white group-hover:text-primary-accent transition-colors">{p.name}</span>
+                             <div className="relative">
+                               <PlayerAvatar seed={p.id} name={p.name} size={80} className={`rounded-full ring-4 ring-white/5 group-hover:ring-primary-accent/30 transition-all drop-shadow-xl ${p.connected === false ? "opacity-40 grayscale" : ""}`} />
+                               <span
+                                 title={p.connected === false ? `${p.name} disconnected` : `${p.name} connected`}
+                                 className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-primary-bg ${p.connected === false ? "bg-danger-accent" : "bg-green-500"}`}
+                               />
+                             </div>
+                             <span className="font-display font-bold text-lg text-white group-hover:text-primary-accent transition-colors">
+                               {p.name}
+                               {p.connected === false && (
+                                 <span className="block text-[10px] font-bold uppercase tracking-widest text-danger-accent">Disconnected</span>
+                               )}
+                             </span>
                              <button
                                onClick={() => handleKick(p.id)}
                                className="opacity-0 group-hover:opacity-100 mt-2 px-3 py-1 rounded-lg bg-danger-accent/10 text-danger-accent text-xs font-bold hover:bg-danger-accent/20 transition-all"
@@ -739,6 +782,72 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               <p className="text-lg text-text-muted leading-relaxed whitespace-pre-wrap font-medium">
                 {categoryModalData.description?.trim() || "No detailed description provided for this category."}
               </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Score history / undo modal */}
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div
+            key="history-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl"
+            onClick={() => setShowHistory(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", stiffness: 1000, damping: 50, mass: 0.8 }}
+              className="glass-panel-heavy rounded-[2.5rem] p-10 max-w-lg w-full space-y-6 relative border border-white/20 shadow-[0_0_80px_rgba(0,0,0,0.6)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowHistory(false)}
+                className="absolute top-6 right-6 p-2 rounded-full bg-white/10 border border-white/10 text-text-muted hover:text-white hover:bg-white/20 transition-all hover:scale-110 active:scale-90"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <h3 className="text-3xl font-display font-black text-white leading-tight pr-8">Score History</h3>
+              <p className="text-sm text-text-muted -mt-4">Every score change this game, most recent first. Misjudged a call? Use "Undo Last" to revert it.</p>
+              <div className="h-px w-full bg-gradient-to-r from-white/20 to-transparent" />
+              <div className="max-h-[50vh] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                {scoreHistoryEntries.length === 0 ? (
+                  <p className="text-sm text-text-muted text-center py-6">No score changes yet.</p>
+                ) : (
+                  scoreHistoryEntries.map((entry, i) => (
+                    <div
+                      key={entry.id}
+                      className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${
+                        i === 0 ? "bg-warning-accent/5 border-warning-accent/20" : "bg-white/5 border-white/5"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{entry.description}</p>
+                        <p className="text-[11px] text-text-muted">
+                          {new Date(entry.timestamp).toLocaleTimeString()} · {entry.previousScore} → {entry.newScore}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 font-display font-black text-lg ${entry.changeAmount >= 0 ? "text-success-accent" : "text-danger-accent"}`}>
+                        {entry.changeAmount >= 0 ? "+" : ""}{entry.changeAmount}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+              {scoreHistoryEntries.length > 0 && (
+                <button
+                  onClick={handleUndo}
+                  className="w-full py-3 rounded-xl bg-warning-accent/10 border border-warning-accent/20 text-warning-accent text-sm font-bold hover:bg-warning-accent/20 transition-colors"
+                >
+                  Undo Most Recent Change
+                </button>
+              )}
             </motion.div>
           </motion.div>
         )}

@@ -4,7 +4,7 @@ import { useRoom } from "../context/RoomContext";
 import { Zap, Trophy, Crown, LogOut, Users, X, Info } from "lucide-react";
 import { soundManager } from "../utils/sound";
 import { db } from "../firebase";
-import { ref, get } from "firebase/database";
+import { ref, get, onValue } from "firebase/database";
 import type { Quiz } from "../types/jeopardy";
 import { PlayerAvatar } from "../utils/playerAvatar";
 
@@ -44,6 +44,27 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const sortedBuzzes = Object.entries(room?.buzzes || {}).sort((a, b) => a[1] - b[1]);
 
   const [factIndex, setFactIndex] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
+  const [showRestored, setShowRestored] = useState(false);
+
+  // Track this client's live socket connectivity so a dropped connection is
+  // visible instead of silently looking like an idle screen.
+  useEffect(() => {
+    const infoRef = ref(db, ".info/connected");
+    const unsub = onValue(infoRef, (snap) => setIsOffline(snap.val() !== true));
+    return () => unsub();
+  }, []);
+
+  // If we land back on the "buzzing" phase already holding a buzz (e.g. after
+  // a refresh mid-question), briefly reassure the player their spot in the
+  // queue was preserved rather than silently lost.
+  useEffect(() => {
+    if (room?.phase === "buzzing" && hasBuzzed) {
+      setShowRestored(true);
+      const t = setTimeout(() => setShowRestored(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [room?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (room?.phase !== "lobby") return;
@@ -88,6 +109,30 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
       {/* Background glow effects */}
       <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-secondary-accent/10 blur-[150px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary-accent/10 blur-[150px] rounded-full pointer-events-none" />
+
+      {/* Connection status banners */}
+      <AnimatePresence>
+        {isOffline && (
+          <motion.div
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -40, opacity: 0 }}
+            className="fixed top-0 inset-x-0 z-50 bg-danger-accent text-white text-center text-xs font-bold uppercase tracking-widest py-2"
+          >
+            Reconnecting… your buzz-in spot and score are safe.
+          </motion.div>
+        )}
+        {!isOffline && showRestored && (
+          <motion.div
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -40, opacity: 0 }}
+            className="fixed top-0 inset-x-0 z-50 bg-green-600 text-white text-center text-xs font-bold uppercase tracking-widest py-2"
+          >
+            Reconnected — your buzz was preserved.
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Top bar ────────────────────────────────────────────────────── */}
       <header className="glass-panel sticky top-0 z-40 px-5 py-4 flex items-center justify-between border-b border-white/5">

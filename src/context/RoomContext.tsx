@@ -22,6 +22,7 @@ import {
   onValue,
   remove,
   onDisconnect,
+  serverTimestamp,
 } from "firebase/database";
 import type {
   Room,
@@ -30,6 +31,7 @@ import type {
   RoomPhase,
   Quiz,
   Question,
+  ScoreHistoryEntry,
 } from "../types/jeopardy";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -39,6 +41,33 @@ const genId = (len = 6) =>
     .toString(36)
     .toUpperCase()
     .slice(2, 2 + len);
+
+const genEntryId = () =>
+  `sh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+/** Builds a score-history entry + the score-change update for a single player. */
+const buildScoreChange = (
+  playerId: string,
+  currentScore: number,
+  changeAmount: number,
+  description: string,
+  questionId?: string,
+): { entry: ScoreHistoryEntry; newScore: number } => {
+  const newScore = currentScore + changeAmount;
+  return {
+    newScore,
+    entry: {
+      id: genEntryId(),
+      timestamp: Date.now(),
+      description,
+      teamId: playerId,
+      changeAmount,
+      previousScore: currentScore,
+      newScore,
+      questionId,
+    },
+  };
+};
 
 /** Recursively strip `undefined` values so Firebase doesn't silently reject writes. */
 const sanitize = (obj: any): any => {
@@ -73,6 +102,8 @@ interface RoomContextProps {
   openQuestion: (question: Question, categoryName: string) => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
   splitPoints: (playerIds: string[]) => Promise<void>;
+  adjustScore: (playerId: string, delta: number, reason: string) => Promise<void>;
+  undoLastScoreChange: () => Promise<void>;
   revealAnswer: (answerText: string) => Promise<void>;
   closeQuestion: () => Promise<void>;
   endGame: () => Promise<void>;
@@ -153,6 +184,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           score: 0,
           joinedAt: Date.now(),
           isHost: true,
+          connected: true,
+          lastSeen: Date.now(),
         };
 
         const newRoom: Room = {
@@ -237,9 +270,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       const value = room.activeQuestion?.value ?? 0;
       const delta = correct ? value : -value;
       const currentScore = room.players[buzzPlayerId]?.score ?? 0;
+      const playerName = room.players[buzzPlayerId]?.name ?? "Player";
+      const { entry, newScore } = buildScoreChange(
+        buzzPlayerId,
+        currentScore,
+        delta,
+        `${playerName} ${correct ? "answered correctly" : "answered incorrectly"} — "${room.activeQuestion?.categoryName ?? ""}" for $${value}`,
+        room.activeQuestion?.questionId,
+      );
 
       const updates: Record<string, any> = {
-        [`players/${buzzPlayerId}/score`]: currentScore + delta,
+        [`players/${buzzPlayerId}/score`]: newScore,
+        [`scoreHistory/${entry.id}`]: entry,
       };
 
       if (correct && room.activeQuestion) {
@@ -268,7 +310,16 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       const updates: Record<string, any> = {};
       for (const pid of playerIds) {
         const currentScore = room.players[pid]?.score ?? 0;
-        updates[`players/${pid}/score`] = currentScore + share;
+        const playerName = room.players[pid]?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          currentScore,
+          share,
+          `${playerName} split credit — "${room.activeQuestion?.categoryName ?? ""}" for $${value} (÷${playerIds.length})`,
+          room.activeQuestion?.questionId,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
       }
 
       if (room.activeQuestion) {
@@ -282,6 +333,54 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [roomCode, room],
   );
+
+  // ── Host: manually adjust a player's score ────────────────────────────────
+  // For ad-hoc corrections outside the normal judge/split flow (e.g. fixing a
+  // typo'd award). Still logged to scoreHistory so it's part of the audit trail.
+  const adjustScore = useCallback(
+    async (playerId: string, delta: number, reason: string) => {
+      if (!roomCode || !room || delta === 0) return;
+      const currentScore = room.players[playerId]?.score ?? 0;
+      const playerName = room.players[playerId]?.name ?? "Player";
+      const { entry, newScore } = buildScoreChange(
+        playerId,
+        currentScore,
+        delta,
+        reason || `Manual adjustment for ${playerName}`,
+      );
+      await update(ref(db, `rooms/${roomCode}`), {
+        [`players/${playerId}/score`]: newScore,
+        [`scoreHistory/${entry.id}`]: entry,
+      });
+    },
+    [roomCode, room],
+  );
+
+  // ── Host: undo the most recent score change ───────────────────────────────
+  // Reverts the affected player's score back to `previousScore` and removes
+  // the entry from the history (a corresponding "undo" note is *not* kept as
+  // a separate entry — the offending entry simply disappears, since the goal
+  // is to let a host cleanly walk back a misjudged call).
+  const undoLastScoreChange = useCallback(async () => {
+    if (!roomCode || !room?.scoreHistory) return;
+    const entries = Object.values(room.scoreHistory).sort(
+      (a, b) => b.timestamp - a.timestamp,
+    );
+    const last = entries[0];
+    if (!last || !last.teamId) return;
+
+    // Guard against undoing a change that's no longer the latest true state
+    // (e.g. more score changes for that player happened after logging, out
+    // of order due to network timing) by reverting relative to the entry's
+    // own recorded delta rather than blindly setting previousScore.
+    const currentScore = room.players[last.teamId]?.score ?? 0;
+    const revertedScore = currentScore - last.changeAmount;
+
+    await update(ref(db, `rooms/${roomCode}`), {
+      [`players/${last.teamId}/score`]: revertedScore,
+      [`scoreHistory/${last.id}`]: null,
+    });
+  }, [roomCode, room]);
 
   // ── Host: reveal the answer text ─────────────────────────────────────────
   const revealAnswer = useCallback(async (answerText: string) => {
@@ -325,9 +424,13 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   // ── Player: join a room ───────────────────────────────────────────────────
-  // Fix #1: on rejoin, we completely overwrite the player record (fresh joinedAt,
-  // score preserved if already present) and clear any stale buzz for this
-  // identity so they cannot inherit a phantom queue position.
+  // Rejoin/reconnect handling: a refresh or dropped connection must NOT cost a
+  // player their spot in an in-progress buzz queue. We only treat this as a
+  // "fresh" join (new joinedAt, cleared buzz) the first time we ever see this
+  // playerId in the room. On every subsequent join — i.e. a rejoin after a
+  // refresh/disconnect — we keep the original joinedAt and, crucially, leave
+  // any existing `buzzes/{myId}` entry untouched so a mid-"buzzing"-phase
+  // refresh silently preserves (rather than erases) their queue position.
   const joinRoom = useCallback(
     async (code: string, playerName: string) => {
       setLoading(true);
@@ -338,29 +441,43 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!snap.exists()) throw new Error(`Room "${upperCode}" not found.`);
 
         const existingRoom = snap.val() as Room;
-        // Preserve existing score if this player was already in the room
-        const existingScore = existingRoom.players?.[myId]?.score ?? 0;
+        const existingPlayer = existingRoom.players?.[myId];
+        const isRejoin = !!existingPlayer;
 
         const player: RoomPlayer = {
           id: myId,
           name: playerName,
-          score: existingScore,
-          joinedAt: Date.now(), // fresh timestamp = unambiguous rejoin marker
+          score: existingPlayer?.score ?? 0,
+          // Preserve the original joinedAt on rejoin so lobby ordering and
+          // "who has been here longest" stay stable across refreshes.
+          joinedAt: existingPlayer?.joinedAt ?? Date.now(),
           isHost: false,
+          connected: true,
+          lastSeen: Date.now(),
         };
 
-        const playerRef = ref(db, `rooms/${upperCode}/players/${myId}`);
-        const buzzRef = ref(db, `rooms/${upperCode}/buzzes/${myId}`);
+        const connectedRef = ref(db, `rooms/${upperCode}/players/${myId}/connected`);
+        const lastSeenRef = ref(db, `rooms/${upperCode}/players/${myId}/lastSeen`);
 
-        // Atomically write fresh player record and clear any stale buzz
-        await update(ref(db, `rooms/${upperCode}`), {
+        const updates: Record<string, any> = {
           [`players/${myId}`]: player,
-          [`buzzes/${myId}`]: null, // Fix #1: erase stale buzz on rejoin
-        });
+        };
+        // Only clear a buzz for a genuinely new identity. A rejoin keeps
+        // whatever buzz (if any) was already recorded for this player, since
+        // that buzz's server timestamp is still the true, fair record of when
+        // they buzzed — refreshing the page shouldn't un-buzz them.
+        if (!isRejoin) {
+          updates[`buzzes/${myId}`] = null;
+        }
+        await update(ref(db, `rooms/${upperCode}`), updates);
 
-        // Re-register disconnect cleanup (idempotent)
-        await onDisconnect(playerRef).remove();
-        await onDisconnect(buzzRef).remove();
+        // Presence: on disconnect, mark the player as disconnected instead of
+        // removing them — the player, their score, and any buzz stay put so
+        // reconnecting mid-question restores exactly where they left off.
+        // Never auto-remove the buzz on disconnect: a dropped connection right
+        // after buzzing shouldn't erase a legitimately-recorded buzz time.
+        await onDisconnect(connectedRef).set(false);
+        await onDisconnect(lastSeenRef).set(serverTimestamp());
 
         setMyName(playerName);
         sessionStorage.setItem("jeopardy_player_name", playerName);
@@ -375,11 +492,35 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     [myId],
   );
 
+  // Re-arm the onDisconnect presence handlers whenever the underlying socket
+  // reconnects (Firebase clears onDisconnect registrations on every
+  // disconnect, so they must be re-registered each time `.info/connected`
+  // flips back to true — otherwise a second drop wouldn't be detected).
+  useEffect(() => {
+    if (!roomCode || !myId) return;
+    const connectedInfoRef = ref(db, ".info/connected");
+    const unsub = onValue(connectedInfoRef, (snap) => {
+      if (snap.val() !== true) return;
+      const connectedRef = ref(db, `rooms/${roomCode}/players/${myId}/connected`);
+      const lastSeenRef = ref(db, `rooms/${roomCode}/players/${myId}/lastSeen`);
+      update(ref(db, `rooms/${roomCode}`), {
+        [`players/${myId}/connected`]: true,
+        [`players/${myId}/lastSeen`]: serverTimestamp(),
+      }).catch(() => {});
+      onDisconnect(connectedRef).set(false);
+      onDisconnect(lastSeenRef).set(serverTimestamp());
+    });
+    return () => unsub();
+  }, [roomCode, myId]);
+
   // ── Player: buzz in ────────────────────────────────────────────────────────
-  // Fix #2: server is sole source of truth — write timestamp only if the player
-  // is genuinely absent from the buzzes map. Duplicate guard is server-side
-  // (Firebase only writes if the key doesn't exist or we overwrite — since we
-  // check locally first and the phase gate prevents race-abuses this is safe).
+  // Fix: ordering must never depend on the buzzing client's own clock — a
+  // player on high-latency wifi vs. one on 4G, or with a merely-skewed system
+  // clock, could otherwise "win" despite pressing later. We write Firebase's
+  // serverTimestamp() sentinel instead of Date.now(); the *database server*
+  // stamps the value the instant it processes the write, so every buzz is
+  // ordered on one single authoritative clock regardless of whose device sent
+  // it or how fast their connection was.
   const buzz = useCallback(async () => {
     if (!roomCode || !room) return;
     // Only allowed when phase is 'buzzing'
@@ -388,7 +529,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     if (room.buzzes?.[myId]) return;
 
     await update(ref(db, `rooms/${roomCode}`), {
-      [`buzzes/${myId}`]: Date.now(),
+      [`buzzes/${myId}`]: serverTimestamp(),
     });
   }, [roomCode, room, myId]);
 
@@ -423,6 +564,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         openQuestion,
         judgeAnswer,
         splitPoints,
+        adjustScore,
+        undoLastScoreChange,
         revealAnswer,
         closeQuestion,
         endGame,

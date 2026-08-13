@@ -45,6 +45,8 @@ export interface RoomPlayer {
   score: number;
   joinedAt: number;
   isHost: boolean;
+  connected: boolean; // live presence — false while the client is disconnected, but the player stays in the room
+  lastSeen: number; // server-resolved timestamp of last connect/disconnect transition
 }
 
 export interface BuzzEvent {
@@ -75,6 +77,7 @@ export interface Room {
   completedQuestions: Record<string, boolean>; // questionId → true
   activeQuestion: ActiveQuestion | null;
   buzzes?: Record<string, number>; // playerId -> timestamp
+  scoreHistory?: Record<string, ScoreHistoryEntry>; // entryId → entry, audit trail of every score change
   createdAt: number;
 }
 
