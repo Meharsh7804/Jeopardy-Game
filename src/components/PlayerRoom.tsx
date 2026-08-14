@@ -353,7 +353,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     ${room.activeQuestion.value}
                   </span>
                 </div>
-                {room.activeQuestion.mediaUrl && room.activeQuestion.type !== "text" && (
+                {room.activeQuestion.mediaUrl && room.activeQuestion.type && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
                     <img
                       src={room.activeQuestion.mediaUrl}
@@ -459,7 +459,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     ${room.activeQuestion.value}
                   </span>
                 </div>
-                {room.activeQuestion.mediaUrl && room.activeQuestion.type !== "text" && (
+                {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
                     <img
                       src={room.activeQuestion.mediaUrl}
@@ -500,7 +500,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               className="w-full max-w-2xl mx-auto space-y-6"
             >
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10">
-                {room.activeQuestion.mediaUrl && room.activeQuestion.type !== "text" && (
+                {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
                     <img
                       src={room.activeQuestion.mediaUrl}
