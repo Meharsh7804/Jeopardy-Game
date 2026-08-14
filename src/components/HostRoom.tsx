@@ -20,14 +20,9 @@ import {
 import { soundManager } from "../utils/sound";
 import { PlayerAvatar } from "../utils/playerAvatar";
 
-const getGridColsClass = (count: number) => {
-  if (count <= 1) return "grid-cols-1";
-  if (count === 2) return "grid-cols-2";
-  if (count === 3) return "grid-cols-3";
-  if (count === 4) return "grid-cols-4";
-  if (count === 5) return "grid-cols-5";
-  return "grid-cols-6";
-};
+const getGridStyle = (count: number): React.CSSProperties => ({
+  gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
+});
 
 const FUN_FACTS = [
   "Did you know? Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.",
@@ -352,7 +347,14 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   </span>
                 </div>
 
-                <div className={`grid gap-2 ${getGridColsClass(quiz.categories.length)}`}>
+                <div className="w-full overflow-x-auto pb-2">
+                <div
+                  className="grid gap-2"
+                  style={{
+                    ...getGridStyle(quiz.categories.length),
+                    minWidth: quiz.categories.length > 6 ? `${quiz.categories.length * 120}px` : undefined,
+                  }}
+                >
                   {/* Category headers */}
                   {quiz.categories.map((cat) => (
                     <button
@@ -391,6 +393,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                       );
                     }),
                   )}
+                </div>
                 </div>
               </div>
 
