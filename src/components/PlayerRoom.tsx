@@ -353,7 +353,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     ${room.activeQuestion.value}
                   </span>
                 </div>
-                {room.activeQuestion.mediaUrl && room.activeQuestion.type && (
+                {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
                     <img
                       src={room.activeQuestion.mediaUrl}
