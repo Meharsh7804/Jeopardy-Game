@@ -351,8 +351,15 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                   </span>
                 </div>
                 {room.activeQuestion.mediaUrl && room.activeQuestion.type !== "text" && (
-                  <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto w-fit max-h-56">
-                    <img src={room.activeQuestion.mediaUrl} alt="" className="max-h-56 object-contain bg-black/40" />
+                  <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
+                    <img
+                      src={room.activeQuestion.mediaUrl}
+                      alt="Question media"
+                      className="max-h-56 w-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
                   </div>
                 )}
                 <p className="text-2xl sm:text-3xl font-display font-bold text-white leading-relaxed whitespace-pre-wrap">
@@ -425,6 +432,55 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
             </motion.div>
           )}
 
+          {/* JUDGING – host is evaluating the buzzer's answer */}
+          {room.phase === "judging" && room.activeQuestion && (
+            <motion.div
+              key="judging"
+              initial={{ opacity: 0, scale: 0.95, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+                mass: 0.8,
+              }}
+              className="w-full max-w-2xl mx-auto space-y-6"
+            >
+              <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-5 relative shadow-2xl border border-white/10">
+                <div className="flex items-center justify-center gap-3">
+                  <span className="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-text-muted uppercase tracking-widest">
+                    {room.activeQuestion.categoryName}
+                  </span>
+                  <span className="font-display font-black text-warning-accent text-xl">
+                    ${room.activeQuestion.value}
+                  </span>
+                </div>
+                {room.activeQuestion.mediaUrl && room.activeQuestion.type !== "text" && (
+                  <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
+                    <img
+                      src={room.activeQuestion.mediaUrl}
+                      alt="Question media"
+                      className="max-h-56 w-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  </div>
+                )}
+                <p className="text-2xl sm:text-3xl font-display font-bold text-white leading-relaxed whitespace-pre-wrap">
+                  {room.activeQuestion.text}
+                </p>
+              </div>
+              <div className="glass-panel p-6 rounded-3xl space-y-3 mt-4 shadow-xl border border-white/10 text-center">
+                <div className="flex items-center justify-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10">
+                  <div className="w-3 h-3 rounded-full bg-warning-accent animate-pulse" />
+                  <p className="text-sm font-bold text-white uppercase tracking-widest">Host is judging...</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* ANSWER revealed */}
           {room.phase === "answer" && room.activeQuestion && (
             <motion.div
@@ -441,6 +497,18 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               className="w-full max-w-2xl mx-auto space-y-6"
             >
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10">
+                {room.activeQuestion.mediaUrl && room.activeQuestion.type !== "text" && (
+                  <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
+                    <img
+                      src={room.activeQuestion.mediaUrl}
+                      alt="Question media"
+                      className="max-h-56 w-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  </div>
+                )}
                 <p className="text-xl font-display font-medium text-text-muted/80 whitespace-pre-wrap">
                   {room.activeQuestion.text}
                 </p>
