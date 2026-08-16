@@ -10,10 +10,32 @@ export interface PlayerProfile {
   fastestBuzz: number | null; // ms
   totalPoints: number;
   favoriteCategory: string | null;
+  achievements: Record<string, number>; // achievement id -> unlock timestamp (ms)
+}
+
+export interface MatchRecord {
+  date: number; // ms
+  myScore: number;
+  rank: number; // 1-based among non-hosts
+  totalPlayers: number;
+  won: boolean;
+  correct: number;
+  wrong: number;
+  scores: { name: string; score: number }[]; // final standings, highest first
+}
+
+export interface SeasonStats {
+  points: number;
+  games: number;
+  wins: number;
 }
 
 const KEY = "jeopardy_profile";
 const DEDUPE_KEY = "jeopardy_profile_recorded";
+const HISTORY_KEY = "jeopardy_match_history";
+const SEASONS_KEY = "jeopardy_seasons";
+
+const HISTORY_LIMIT = 20;
 
 const emptyProfile = (): PlayerProfile => ({
   name: "",
@@ -25,6 +47,7 @@ const emptyProfile = (): PlayerProfile => ({
   fastestBuzz: null,
   totalPoints: 0,
   favoriteCategory: null,
+  achievements: {},
 });
 
 const persist = (p: PlayerProfile) => {
@@ -52,6 +75,96 @@ export const saveProfileName = (name: string) => {
   persist(p);
 };
 
+const loadJSON = <T,>(storageKey: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+/** Recent finished games, newest first. */
+export const loadMatchHistory = (): MatchRecord[] => loadJSON<MatchRecord[]>(HISTORY_KEY, []);
+
+/** Per-calendar-month standings, keyed "YYYY-MM". */
+export const loadSeasons = (): Record<string, SeasonStats> => loadJSON(SEASONS_KEY, {});
+
+export const seasonKeyOf = (date: Date = new Date()): string => {
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  return `${date.getFullYear()}-${m}`;
+};
+
+// ─── XP & levels ─────────────────────────────────────────────────────────────
+
+/** Lifetime XP derived deterministically from the profile totals. */
+export const xpOf = (p: PlayerProfile): number =>
+  p.gamesPlayed * 10 + p.gamesWon * 75 + p.totalCorrect * 15;
+
+export interface LevelInfo {
+  level: number;
+  into: number; // XP earned inside the current level
+  need: number; // XP required to reach the next level
+}
+
+/** Level 1 starts at 0; each next level needs 50 more XP than the last. */
+export const levelInfo = (xp: number): LevelInfo => {
+  let level = 1;
+  let threshold = 100;
+  while (xp >= threshold) {
+    xp -= threshold;
+    level += 1;
+    threshold += 50;
+  }
+  return { level, into: xp, need: threshold };
+};
+
+// ─── Achievements ────────────────────────────────────────────────────────────
+
+export type AchievementId =
+  | "firstWin"
+  | "onFire"
+  | "sharpshooter"
+  | "regular"
+  | "lightning"
+  | "highRoller"
+  | "flawless"
+  | "centurion";
+
+export const ACHIEVEMENT_IDS: AchievementId[] = [
+  "firstWin",
+  "onFire",
+  "sharpshooter",
+  "regular",
+  "lightning",
+  "highRoller",
+  "flawless",
+  "centurion",
+];
+
+const checkAchievements = (p: PlayerProfile, history: MatchRecord[]): Record<string, number> => {
+  const unlocked: Record<string, number> = { ...p.achievements };
+  const now = Date.now();
+  const grant = (id: AchievementId, met: boolean) => {
+    if (met && !unlocked[id]) unlocked[id] = now;
+  };
+
+  grant("firstWin", p.gamesWon >= 1);
+  grant("onFire", p.bestStreak >= 3);
+  grant("sharpshooter", p.totalCorrect >= 25);
+  grant("regular", p.gamesPlayed >= 10);
+  grant("lightning", p.fastestBuzz !== null && (p.fastestBuzz as number) <= 3000);
+  grant("highRoller", p.totalPoints >= 5000);
+  grant(
+    "flawless",
+    history.some((m) => m.won && m.wrong === 0 && m.correct >= 3),
+  );
+  grant("centurion", history.some((m) => m.myScore >= 1000));
+
+  return unlocked;
+};
+
 /**
  * Records a finished game into the local player's profile. Dedupes via
  * sessionStorage so remounts/reconnects (and StrictMode double-effects) never
@@ -75,6 +188,7 @@ export const recordGameEnd = (room: Room, myId: string): PlayerProfile => {
   const ranked = Object.values(room.players)
     .filter((p) => !p.isHost)
     .sort((a, b) => b.score - a.score);
+  const rank = ranked.findIndex((p) => p.id === myId) + 1;
   const won = ranked[0]?.id === myId && (ranked[0]?.score ?? 0) > 0;
 
   const p = loadProfile();
@@ -116,6 +230,39 @@ export const recordGameEnd = (room: Room, myId: string): PlayerProfile => {
   }
   if (bestCategory) p.favoriteCategory = bestCategory;
 
+  // Match history (newest first, capped).
+  const match: MatchRecord = {
+    date: Date.now(),
+    myScore: me.score ?? 0,
+    rank,
+    totalPlayers: ranked.length,
+    won,
+    correct: me.correctCount ?? 0,
+    wrong: me.wrongCount ?? 0,
+    scores: ranked.map((r) => ({ name: r.name, score: r.score ?? 0 })),
+  };
+  const history = [match, ...loadMatchHistory()].slice(0, HISTORY_LIMIT);
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // storage unavailable — history stays in-memory only
+  }
+
+  // Season standings (per calendar month).
+  const seasons = loadSeasons();
+  const skey = seasonKeyOf();
+  const s = seasons[skey] ?? { points: 0, games: 0, wins: 0 };
+  s.points += me.score ?? 0;
+  s.games += 1;
+  if (won) s.wins += 1;
+  seasons[skey] = s;
+  try {
+    localStorage.setItem(SEASONS_KEY, JSON.stringify(seasons));
+  } catch {
+    // storage unavailable — seasons stay in-memory only
+  }
+
+  p.achievements = checkAchievements(p, history);
   persist(p);
   return p;
 };

@@ -12,7 +12,8 @@ interface ScorePopupProps {
  * change for that player lands. Mount inside a `relative` row container; each
  * score-history entry animates exactly once (diffed by entry id), so remounts
  * and reconnects never replay old popups. Popups stack vertically instead of
- * overlapping, and emerge from above the row so they never cover the score.
+ * overlapping, emerge from above the row, and the whole enter-hold-exit cycle
+ * stays under one second so nothing lingers into the next question.
  */
 export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => {
   const seen = useRef<Set<string>>(new Set());
@@ -26,7 +27,7 @@ export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => 
       setActive((prev) => [...prev.slice(-2), e]);
       window.setTimeout(() => {
         setActive((prev) => prev.filter((x) => x.id !== e.id));
-      }, 1800);
+      }, 750);
     });
   }, [entries, playerId]);
 
@@ -35,10 +36,10 @@ export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => 
       {active.map((e, i) => (
         <motion.span
           key={e.id}
-          initial={{ opacity: 0, y: 0, scale: 0.85 }}
-          animate={{ opacity: 1, y: -14, scale: 1 }}
-          exit={{ opacity: 0, y: -20, transition: { duration: 0.3, ease: "easeIn" } }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          initial={{ opacity: 0, y: 2, scale: 0.9 }}
+          animate={{ opacity: 1, y: -12, scale: 1 }}
+          exit={{ opacity: 0, y: -16, transition: { duration: 0.2, ease: "easeIn" } }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
           style={{ top: -12 - i * 20 }}
           className={`absolute right-2 font-display font-black text-base sm:text-lg pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] ${
             e.changeAmount >= 0 ? "text-success-accent" : "text-danger-accent"

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { motion } from "framer-motion";
 import {
   Trophy,
@@ -13,18 +13,7 @@ import {
 import type { RoomPlayer } from "../types/jeopardy";
 import { PlayerAvatar } from "../utils/playerAvatar";
 import { useSettings } from "../context/SettingsContext";
-
-const CONFETTI_COLORS = [
-  "#f59e0b",
-  "#fbbf24",
-  "#ef4444",
-  "#f43f5e",
-  "#3b82f6",
-  "#10b981",
-  "#8b5cf6",
-  "#f97316",
-  "#facc15",
-];
+import { ConfettiBurst } from "./ConfettiBurst";
 
 const fmtReaction = (ms?: number | null) =>
   ms === undefined || ms === null ? "—" : `${(ms / 1000).toFixed(2)}s`;
@@ -32,48 +21,6 @@ const fmtReaction = (ms?: number | null) =>
 const accuracyOf = (p: RoomPlayer) => {
   const answered = (p.correctCount ?? 0) + (p.wrongCount ?? 0);
   return answered === 0 ? null : Math.round(((p.correctCount ?? 0) / answered) * 100);
-};
-
-const Confetti: React.FC<{ count?: number }> = ({ count = 60 }) => {
-  const pieces = useMemo(
-    () =>
-      Array.from({ length: count }).map((_, i) => ({
-        id: i,
-        left: Math.random() * 100,
-        delay: Math.random() * 3,
-        duration: 3.2 + Math.random() * 2.8,
-        drift: (Math.random() - 0.5) * 220,
-        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-        round: Math.random() > 0.6,
-        size: 6 + Math.random() * 7,
-      })),
-    [count],
-  );
-
-  return (
-    <div
-      className="fixed inset-0 overflow-hidden pointer-events-none z-40 motion-reduce:hidden"
-      aria-hidden
-    >
-      {pieces.map((p) => (
-        <div
-          key={p.id}
-          className="confetti-piece"
-          style={{
-            left: `${p.left}%`,
-            width: p.round ? p.size : p.size * 0.6,
-            height: p.round ? p.size : p.size * 1.6,
-            borderRadius: p.round ? "50%" : "2px",
-            backgroundColor: p.color,
-            opacity: 0.9,
-            ["--confetti-x" as any]: `${p.drift}px`,
-            animationDuration: `${p.duration}s`,
-            animationDelay: `${p.delay}s`,
-          }}
-        />
-      ))}
-    </div>
-  );
 };
 
 interface ResultsScreenProps {
@@ -126,7 +73,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[75vh] gap-10 text-center p-6 w-full relative">
-      <Confetti />
+      <ConfettiBurst />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}

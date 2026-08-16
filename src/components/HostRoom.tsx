@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRoom } from "../context/RoomContext";
 import { useQuizLibrary } from "../context/QuizLibraryContext";
@@ -77,6 +77,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const knownBuzzCount = useRef<number | null>(null);
 
   useEffect(() => {
     if (room?.phase !== "lobby") return;
@@ -96,6 +97,24 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   useEffect(() => {
     if (room?.phase === "ended") soundManager.playWinner();
   }, [room?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The host hears every new buzz land, so the "buzzed in" moment is audible.
+  useEffect(() => {
+    const count = Object.keys(room?.buzzes ?? {}).length;
+    if (knownBuzzCount.current !== null && count > knownBuzzCount.current) {
+      soundManager.playBuzzer();
+    }
+    knownBuzzCount.current = count;
+  }, [room?.buzzes]);
+
+  const handleJudge = useCallback(
+    async (correct: boolean) => {
+      if (correct) soundManager.playCorrect();
+      else soundManager.playWrong();
+      await judgeAnswer(correct);
+    },
+    [judgeAnswer],
+  );
 
   // Number keys judge the current buzzer: 1 = Correct, 2 = Wrong. R reveals
   // the answer, C closes the question. Only active during buzzing with a
@@ -117,12 +136,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
       }
       if (e.code === "Digit1" && hasBuzzes) {
         e.preventDefault();
-        soundManager.playCorrect();
-        judgeAnswer(true);
+        handleJudge(true);
       } else if (e.code === "Digit2" && hasBuzzes) {
         e.preventDefault();
-        soundManager.playWrong();
-        judgeAnswer(false);
+        handleJudge(false);
       } else if (e.code === "KeyR" && room.activeQuestion && !room.activeQuestion.revealAnswer) {
         e.preventDefault();
         soundManager.playReveal();
@@ -138,7 +155,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [room?.phase, room?.buzzes, room?.activeQuestion, quiz, judgeAnswer, revealAnswer, closeQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [room?.phase, room?.buzzes, room?.activeQuestion, quiz, handleJudge, revealAnswer, closeQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!room) return null;
 
@@ -179,12 +196,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     if (activeLocalQuestion) {
       await revealAnswer(activeLocalQuestion.answer || "");
     }
-  };
-
-  const handleJudge = async (correct: boolean) => {
-    if (correct) soundManager.playCorrect();
-    else soundManager.playWrong();
-    await judgeAnswer(correct);
   };
 
   const handleSplit = async () => {

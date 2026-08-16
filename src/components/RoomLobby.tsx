@@ -22,11 +22,26 @@ import {
   Coins,
   Tag,
   ChevronDown,
+  Award,
+  Medal,
+  CalendarCheck,
+  History,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PlayerAvatar } from "../utils/playerAvatar";
 import { SettingsModal } from "./SettingsModal";
 import { HeroQuizArena } from "./HeroQuizArena";
-import { loadProfile, saveProfileName } from "../utils/profile";
+import {
+  loadProfile,
+  saveProfileName,
+  loadMatchHistory,
+  loadSeasons,
+  seasonKeyOf,
+  xpOf,
+  levelInfo,
+  ACHIEVEMENT_IDS,
+} from "../utils/profile";
+import type { AchievementId } from "../utils/profile";
 
 interface RoomLobbyProps {
   onHostEntersRoom: () => void;
@@ -58,9 +73,27 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   const [localError, setLocalError] = useState("");
   const profile = loadProfile();
 
+  const matches = loadMatchHistory();
+  const seasons = loadSeasons();
+  const season = seasons[seasonKeyOf()] ?? { points: 0, games: 0, wins: 0 };
+  const xp = xpOf(profile);
+  const level = levelInfo(xp);
+  const unlockedCount = ACHIEVEMENT_IDS.filter((id) => profile.achievements[id]).length;
+
   const totalAnswered = profile.totalCorrect + profile.totalWrong;
   const accuracy =
     totalAnswered > 0 ? Math.round((profile.totalCorrect / totalAnswered) * 100) : null;
+
+  const ACHIEVEMENT_ICONS: Record<AchievementId, LucideIcon> = {
+    firstWin: Trophy,
+    onFire: Flame,
+    sharpshooter: Target,
+    regular: CalendarCheck,
+    lightning: Zap,
+    highRoller: Coins,
+    flawless: Award,
+    centurion: Medal,
+  };
 
   const selectedQuiz = quizzes.find((q) => q.id === selectedQuizId) ?? quizzes[0];
 
@@ -264,6 +297,155 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             <ChevronDown className="w-4 h-4 text-primary-accent" />
           </motion.span>
         </motion.div>
+
+        {/* ── Profile & career: level, achievements, season, match history ── */}
+        <motion.section
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="col-span-1 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 lg:mt-10"
+        >
+          {/* Level + XP + achievements */}
+          <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-5">
+            <div className="flex items-center gap-4">
+              <PlayerAvatar
+                seed={myId}
+                name={profile.name || playerName || "You"}
+                size={52}
+                className="shrink-0 rounded-full ring-2 ring-primary-accent/40"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-display font-black text-lg text-white truncate">
+                  {profile.name || playerName || "You"}
+                </p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-primary-accent mt-0.5">
+                  {t("levelLabel")} {level.level} · {xp.toLocaleString()} {t("xpLabel")}
+                </p>
+                <div className="mt-2 h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-primary-accent to-secondary-accent transition-all duration-700"
+                    style={{ width: `${Math.min(100, Math.round((level.into / level.need) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Award className="w-3.5 h-3.5 text-warning-accent" /> {t("achievementsTitle")}
+                </span>
+                <span className="text-text-muted/80">{t("achievementsCount", { unlocked: unlockedCount, total: ACHIEVEMENT_IDS.length })}</span>
+              </p>
+              <div className="grid grid-cols-8 gap-2 mt-3">
+                {ACHIEVEMENT_IDS.map((id) => {
+                  const Icon = ACHIEVEMENT_ICONS[id];
+                  const unlocked = !!profile.achievements[id];
+                  return (
+                    <div
+                      key={id}
+                      title={`${t(`ach${id[0].toUpperCase()}${id.slice(1)}`)} — ${t(`ach${id[0].toUpperCase()}${id.slice(1)}Desc`)}`}
+                      className={`flex items-center justify-center p-2.5 rounded-xl border transition-all ${
+                        unlocked
+                          ? "bg-warning-accent/10 border-warning-accent/30 text-warning-accent"
+                          : "bg-white/[0.03] border-white/5 text-text-muted/40"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Season standings + match history */}
+          <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-5">
+            <div>
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
+                <CalendarCheck className="w-3.5 h-3.5 text-secondary-accent" /> {t("seasonTitle")}
+              </p>
+              <div className="grid grid-cols-3 gap-4 mt-3">
+                <div>
+                  <p className="font-display font-black text-lg text-white leading-none">
+                    {season.points.toLocaleString()}
+                  </p>
+                  <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                    {t("statTotalPoints")}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-display font-black text-lg text-white leading-none">
+                    {season.games}
+                  </p>
+                  <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                    {t("statGames")}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-display font-black text-lg text-warning-accent leading-none">
+                    {season.wins}
+                  </p>
+                  <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                    {t("statWins")}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
+                <History className="w-3.5 h-3.5 text-primary-accent" /> {t("matchHistoryTitle")}
+              </p>
+              <div className="mt-2">
+                {matches.length === 0 ? (
+                  <p className="text-xs text-text-muted py-4 text-center">{t("emptyHistory")}</p>
+                ) : (
+                  matches.slice(0, 5).map((m) => (
+                    <div
+                      key={`${m.date}-${m.rank}`}
+                      className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0"
+                    >
+                      <span
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center font-display font-black text-xs border shrink-0 ${
+                          m.won
+                            ? "bg-warning-accent/15 border-warning-accent/30 text-warning-accent"
+                            : "bg-white/5 border-white/10 text-text-muted"
+                        }`}
+                      >
+                        #{m.rank}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-white truncate">
+                          {new Date(m.date).toLocaleDateString()}
+                          <span className="text-text-muted font-semibold">
+                            {" "}
+                            · {m.totalPlayers} {t("statGames")}
+                          </span>
+                        </p>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-0.5">
+                          {m.correct} ✓ · {m.wrong} ✗
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-display font-black text-sm text-white leading-none">
+                          {m.myScore.toLocaleString()}
+                        </p>
+                        <p
+                          className={`text-[9px] font-bold uppercase tracking-widest mt-1 ${
+                            m.won ? "text-warning-accent" : "text-text-muted"
+                          }`}
+                        >
+                          {m.won ? t("matchWon") : t("matchLost")}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </motion.section>
       </main>
 
       {/* ── Create Game modal ──────────────────────────────────────────── */}

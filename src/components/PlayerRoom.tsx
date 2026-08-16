@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRoom } from "../context/RoomContext";
 import { Zap, Crown, LogOut, Users, X, Info, Settings as SettingsIcon } from "lucide-react";
@@ -75,6 +75,23 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   useEffect(() => {
     if (room?.phase === "ended" && myId) recordGameEnd(room, myId);
   }, [room, myId]);
+
+  // Players hear the verdict (correct/wrong) when their score changes. Past
+  // entries are seeded on mount so reconnects never replay old verdicts.
+  const heardScoreEntries = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const entries = Object.values(room?.scoreHistory ?? {});
+    if (heardScoreEntries.current === null) {
+      heardScoreEntries.current = new Set(entries.map((e) => e.id));
+      return;
+    }
+    for (const e of entries) {
+      if (e.teamId !== myId || heardScoreEntries.current.has(e.id)) continue;
+      heardScoreEntries.current.add(e.id);
+      if (e.changeAmount > 0) soundManager.playCorrect();
+      else soundManager.playWrong();
+    }
+  }, [room?.scoreHistory, myId]);
 
   // Track this client's live socket connectivity so a dropped connection is
   // visible instead of silently looking like an idle screen.
