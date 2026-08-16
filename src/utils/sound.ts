@@ -1,7 +1,136 @@
+export type SoundTheme = "classic" | "arcade" | "retro";
+
+interface ThemeCfg {
+  buzzer: {
+    click: { type: OscillatorType; freq: number; endFreq: number; dur: number };
+    body: {
+      type: OscillatorType;
+      freqs: number[];
+      startFreq: number;
+      endFreq: number;
+      dur: number;
+      detune: number;
+    };
+  };
+  correct: { notes: number[]; type: OscillatorType; step: number; dur: number };
+  wrong: { type: OscillatorType; freqs: number[]; startFreq: number; endFreq: number; dur: number };
+  tick: { type: OscillatorType; freq: number; dur: number };
+  reveal: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
+  pop: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
+  winner: { chords: number[][]; type: OscillatorType; lastDur: number };
+}
+
+// Every sound is synthesized live with Web Audio (no assets). Each theme
+// re-parameters the same primitives: oscillators, pitch sweeps, and gain
+// envelopes. "classic" is the original mechanical game-show set, "arcade" is
+// an 8-bit square-wave set, "retro" is a brassier game-show set.
+const THEMES: Record<SoundTheme, ThemeCfg> = {
+  classic: {
+    buzzer: {
+      click: { type: "square", freq: 1900, endFreq: 320, dur: 0.04 },
+      body: {
+        type: "sawtooth",
+        freqs: [130, 133],
+        startFreq: 130,
+        endFreq: 95,
+        dur: 0.45,
+        detune: 10,
+      },
+    },
+    correct: {
+      notes: [261.63, 329.63, 392.0, 523.25], // C4 E4 G4 C5
+      type: "sine",
+      step: 0.08,
+      dur: 0.3,
+    },
+    wrong: { type: "triangle", freqs: [146.83, 110.0], startFreq: 146.83, endFreq: 75.0, dur: 0.6 },
+    tick: { type: "sine", freq: 1000, dur: 0.03 },
+    reveal: { type: "triangle", startFreq: 293.66, endFreq: 880.0, dur: 0.4 },
+    pop: { type: "sine", startFreq: 520, endFreq: 980, dur: 0.12 },
+    winner: {
+      chords: [
+        [261.63, 329.63, 392.0, 523.25], // C major
+        [349.23, 440.0, 523.25, 698.46], // F major
+        [392.0, 493.88, 587.33, 783.99], // G major
+        [523.25, 659.25, 783.99, 1046.5], // C major high
+      ],
+      type: "triangle",
+      lastDur: 0.8,
+    },
+  },
+  arcade: {
+    buzzer: {
+      click: { type: "square", freq: 2400, endFreq: 600, dur: 0.03 },
+      body: {
+        type: "square",
+        freqs: [150, 157],
+        startFreq: 150,
+        endFreq: 115,
+        dur: 0.28,
+        detune: 0,
+      },
+    },
+    correct: {
+      notes: [523.25, 659.25, 783.99, 1046.5], // C5 E5 G5 C6
+      type: "square",
+      step: 0.055,
+      dur: 0.12,
+    },
+    wrong: { type: "square", freqs: [220, 165], startFreq: 220, endFreq: 60, dur: 0.4 },
+    tick: { type: "square", freq: 1500, dur: 0.025 },
+    reveal: { type: "square", startFreq: 400, endFreq: 1200, dur: 0.25 },
+    pop: { type: "square", startFreq: 660, endFreq: 1320, dur: 0.09 },
+    winner: {
+      chords: [
+        [523.25, 659.25, 783.99, 1046.5], // C5 major
+        [698.46, 880.0, 1046.5, 1396.91], // F5 major
+        [783.99, 987.77, 1174.66, 1567.98], // G5 major
+        [1046.5, 1318.51, 1567.98, 2093.0], // C6 major high
+      ],
+      type: "square",
+      lastDur: 0.5,
+    },
+  },
+  retro: {
+    buzzer: {
+      click: { type: "square", freq: 1200, endFreq: 250, dur: 0.05 },
+      body: {
+        type: "sawtooth",
+        freqs: [110, 114],
+        startFreq: 110,
+        endFreq: 85,
+        dur: 0.55,
+        detune: 22,
+      },
+    },
+    correct: {
+      notes: [392.0, 523.25, 659.25, 783.99], // G4 C5 E5 G5 (brass-y)
+      type: "sawtooth",
+      step: 0.1,
+      dur: 0.35,
+    },
+    wrong: { type: "sawtooth", freqs: [98, 87.31], startFreq: 98, endFreq: 62, dur: 0.7 },
+    tick: { type: "sine", freq: 880, dur: 0.03 },
+    reveal: { type: "sawtooth", startFreq: 262, endFreq: 880, dur: 0.5 },
+    pop: { type: "triangle", startFreq: 440, endFreq: 880, dur: 0.12 },
+    winner: {
+      chords: [
+        [261.63, 329.63, 392.0, 523.25], // C major
+        [349.23, 440.0, 523.25, 698.46], // F major
+        [392.0, 493.88, 587.33, 783.99], // G major
+        [523.25, 659.25, 783.99, 1046.5], // C major high
+      ],
+      type: "sawtooth",
+      lastDur: 1.0,
+    },
+  },
+};
+
 class SoundManager {
   private ctx: AudioContext | null = null;
   private volume: number = 0.5;
   private muted: boolean = false;
+  private theme: SoundTheme = "classic";
 
   constructor() {
     // Lazily initialized on interaction
@@ -21,9 +150,10 @@ class SoundManager {
     }
   }
 
-  updateSettings(volume: number, muted: boolean) {
+  updateSettings(volume: number, muted: boolean, theme?: SoundTheme) {
     this.volume = volume;
     this.muted = muted;
+    if (theme) this.theme = theme;
     this.initCtx();
   }
 
@@ -68,22 +198,36 @@ class SoundManager {
   }
 
   playBuzzer() {
-    // Low, buzzy square wave detuned chorus
-    this.playOscillator('sawtooth', [130, 133], 0.5, { startFreq: 130, endFreq: 110, type: 'linear' }, 10);
+    const b = THEMES[this.theme].buzzer;
+    // Mechanical press: a sharp click transient (the button) followed by the
+    // low buzzing body, so it reads as a physical game-show buzzer.
+    this.playOscillator(
+      b.click.type,
+      [b.click.freq],
+      b.click.dur,
+      { startFreq: b.click.freq, endFreq: b.click.endFreq, type: 'linear' },
+    );
+    this.playOscillator(
+      b.body.type,
+      b.body.freqs,
+      b.body.dur,
+      { startFreq: b.body.startFreq, endFreq: b.body.endFreq, type: 'linear' },
+      b.body.detune,
+    );
   }
 
   playCorrect() {
     this.initCtx();
     if (!this.ctx || this.muted || this.volume <= 0) return;
 
+    const c = THEMES[this.theme].correct;
     const now = this.ctx.currentTime;
-    const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5 (pleasant arpeggio)
-    
-    notes.forEach((freq, idx) => {
+
+    c.notes.forEach((freq, idx) => {
       if (!this.ctx) return;
-      const noteTime = now + idx * 0.08;
-      const duration = 0.3;
-      
+      const noteTime = now + idx * c.step;
+      const duration = c.dur;
+
       const gainNode = this.ctx.createGain();
       gainNode.gain.setValueAtTime(0, noteTime);
       gainNode.gain.linearRampToValueAtTime(this.volume * 0.2, noteTime + 0.02);
@@ -91,64 +235,79 @@ class SoundManager {
       gainNode.connect(this.ctx.destination);
 
       const osc = this.ctx.createOscillator();
-      osc.type = 'sine';
+      osc.type = c.type;
       osc.frequency.setValueAtTime(freq, noteTime);
       osc.connect(gainNode);
-      
+
       osc.start(noteTime);
       osc.stop(noteTime + duration);
     });
   }
 
   playWrong() {
+    const w = THEMES[this.theme].wrong;
     // Low descending buzzy chord
-    this.playOscillator('triangle', [146.83, 110.0], 0.6, { startFreq: 146.83, endFreq: 75.0, type: 'linear' });
+    this.playOscillator(
+      w.type,
+      w.freqs,
+      w.dur,
+      { startFreq: w.startFreq, endFreq: w.endFreq, type: 'linear' },
+    );
   }
 
   playTimerTick() {
+    const t = THEMES[this.theme].tick;
     // High-pitched short woodblock tick
-    this.playOscillator('sine', [1000], 0.03);
+    this.playOscillator(t.type, [t.freq], t.dur);
   }
 
   playReveal() {
+    const r = THEMES[this.theme].reveal;
     // Elegant slide up synthesizer chime
-    this.playOscillator('triangle', [293.66], 0.4, { startFreq: 293.66, endFreq: 880.00, type: 'exp' });
+    this.playOscillator(
+      r.type,
+      [r.startFreq],
+      r.dur,
+      { startFreq: r.startFreq, endFreq: r.endFreq, type: 'exp' },
+    );
+  }
+
+  playPop() {
+    const p = THEMES[this.theme].pop;
+    // Short rising blip for emoji reactions
+    this.playOscillator(
+      p.type,
+      [p.startFreq],
+      p.dur,
+      { startFreq: p.startFreq, endFreq: p.endFreq, type: 'exp' },
+    );
   }
 
   playWinner() {
     this.initCtx();
     if (!this.ctx || this.muted || this.volume <= 0) return;
 
+    const w = THEMES[this.theme].winner;
     const now = this.ctx.currentTime;
-    // Ascending celebratory fanfare chords
-    // Chord 1: C Major (C4, E4, G4, C5)
-    // Chord 2: F Major (F4, A4, C5, F5)
-    // Chord 3: G Major (G4, B4, D5, G5)
-    // Chord 4: C Major high (C5, E5, G5, C6)
-    
-    const chords = [
-      { notes: [261.63, 329.63, 392.00, 523.25], timeOffset: 0.0, duration: 0.2 },
-      { notes: [349.23, 440.00, 523.25, 698.46], timeOffset: 0.25, duration: 0.2 },
-      { notes: [392.00, 493.88, 587.33, 783.99], timeOffset: 0.5, duration: 0.2 },
-      { notes: [523.25, 659.25, 783.99, 1046.50], timeOffset: 0.75, duration: 0.8 }
-    ];
+    // Ascending celebratory fanfare chords, one every 250ms, the last one
+    // ringing out.
+    w.chords.forEach((notes, idx) => {
+      const chordTime = now + idx * 0.25;
+      const duration = idx === w.chords.length - 1 ? w.lastDur : 0.2;
 
-    chords.forEach((chord) => {
-      const chordTime = now + chord.timeOffset;
-      
       const gainNode = this.ctx!.createGain();
       gainNode.gain.setValueAtTime(0, chordTime);
       gainNode.gain.linearRampToValueAtTime(this.volume * 0.15, chordTime + 0.04);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, chordTime + chord.duration);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, chordTime + duration);
       gainNode.connect(this.ctx!.destination);
 
-      chord.notes.forEach((freq) => {
+      notes.forEach((freq) => {
         const osc = this.ctx!.createOscillator();
-        osc.type = chord.timeOffset > 0.6 ? 'sine' : 'triangle';
+        osc.type = w.type;
         osc.frequency.setValueAtTime(freq, chordTime);
         osc.connect(gainNode);
         osc.start(chordTime);
-        osc.stop(chordTime + chord.duration);
+        osc.stop(chordTime + duration);
       });
     });
   }

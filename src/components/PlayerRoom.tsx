@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRoom } from "../context/RoomContext";
-import { Zap, Trophy, Crown, LogOut, Users, X, Info } from "lucide-react";
+import { Zap, Crown, LogOut, Users, X, Info, Settings as SettingsIcon } from "lucide-react";
 import { soundManager } from "../utils/sound";
 import { db } from "../firebase";
 import { ref, get, onValue } from "firebase/database";
 import type { Quiz } from "../types/jeopardy";
 import { PlayerAvatar } from "../utils/playerAvatar";
+import { ResultsScreen } from "./ResultsScreen";
+import { ReactionOverlay } from "./ReactionOverlay";
+import { ScorePopup } from "./ScorePopup";
+import { SettingsModal } from "./SettingsModal";
+import { StartCountdown } from "./StartCountdown";
+import { useSettings } from "../context/SettingsContext";
+import { recordGameEnd } from "../utils/profile";
 
 const FUN_FACTS = [
   "Did you know? Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.",
@@ -21,6 +28,8 @@ const FUN_FACTS = [
   "Fun Fact: The unicorn is the national animal of Scotland."
 ];
 
+const REACTION_EMOJIS = ["🔥", "🎉", "😂", "😱", "🤯", "🙏"];
+
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
 });
@@ -30,17 +39,42 @@ interface PlayerRoomProps {
 }
 
 export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
-  const { room, myId, myName, buzz, leaveRoom } = useRoom();
+  const { room, myId, myName, buzz, sendReaction, leaveRoom } = useRoom();
+  const { t } = useSettings();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [categoryModalId, setCategoryModalId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const myPlayer = room?.players?.[myId];
   const hasBuzzed = !!room?.buzzes?.[myId];
   const sortedBuzzes = Object.entries(room?.buzzes || {}).sort((a, b) => a[1] - b[1]);
 
+  // Reaction time: buzz timestamps and openedAt are both server-resolved, so
+  // the diff is fair across devices regardless of clock skew.
+  const openedAt =
+    typeof room?.activeQuestion?.openedAt === "number" ? room.activeQuestion.openedAt : 0;
+  const reactionFor = (ts: number): number | null =>
+    openedAt > 0 && ts > openedAt ? ts - openedAt : null;
+  const fmtReaction = (ms: number | null) =>
+    ms === null ? null : `${(ms / 1000).toFixed(2)}s`;
+  const myBuzzTs =
+    typeof room?.buzzes?.[myId] === "number" ? (room.buzzes[myId] as number) : 0;
+  const myReaction = myBuzzTs > 0 ? reactionFor(myBuzzTs) : null;
+  const myQueuePos = myBuzzTs > 0 ? sortedBuzzes.findIndex(([pId]) => pId === myId) + 1 : 0;
+
   const [factIndex, setFactIndex] = useState(0);
   const [isOffline, setIsOffline] = useState(false);
   const [showRestored, setShowRestored] = useState(false);
+
+  // Game-show fanfare when the game ends.
+  useEffect(() => {
+    if (room?.phase === "ended") soundManager.playWinner();
+  }, [room?.phase]);
+
+  // Record this finished game in the player's local profile (once per game).
+  useEffect(() => {
+    if (room?.phase === "ended" && myId) recordGameEnd(room, myId);
+  }, [room, myId]);
 
   // Track this client's live socket connectivity so a dropped connection is
   // visible instead of silently looking like an idle screen.
@@ -88,6 +122,34 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
     await buzz();
   };
 
+  // Space bar = buzz in (game-show style). Guarded against typing in inputs
+  // and key auto-repeat; preventDefault stops the page from scrolling.
+  useEffect(() => {
+    if (room?.phase !== "buzzing" || hasBuzzed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      handleBuzz();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [room?.phase, hasBuzzed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleReact = (emoji: string) => {
+    soundManager.playPop();
+    sendReaction(emoji);
+  };
+
   const handleLeave = () => {
     leaveRoom();
     onLeave();
@@ -114,7 +176,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
             exit={{ y: -40, opacity: 0 }}
             className="fixed top-0 inset-x-0 z-50 bg-danger-accent text-white text-center text-xs font-bold uppercase tracking-widest py-2"
           >
-            Reconnecting… your buzz-in spot and score are safe.
+            {t('reconnect')}
           </motion.div>
         )}
         {!isOffline && showRestored && (
@@ -124,7 +186,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
             exit={{ y: -40, opacity: 0 }}
             className="fixed top-0 inset-x-0 z-50 bg-green-600 text-white text-center text-xs font-bold uppercase tracking-widest py-2"
           >
-            Reconnected — your buzz was preserved.
+            {t('buzzPreserved')}
           </motion.div>
         )}
       </AnimatePresence>
@@ -140,18 +202,25 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               {myName}
             </p>
             <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold mt-0.5">
-              Room: <span className="font-bold text-primary-accent">{room.id}</span>
+              {t('room')}: <span className="font-bold text-primary-accent">{room.id}</span>
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="px-4 py-2 rounded-xl bg-black/40 border border-white/10 shadow-inner flex items-center gap-2">
             <span className="font-display font-black text-xl text-white">{myPlayer?.score ?? 0}</span>
-            <span className="text-xs font-bold text-text-muted uppercase tracking-widest">Pts</span>
+            <span className="text-xs font-bold text-text-muted uppercase tracking-widest">{t('pts')}</span>
           </div>
           <button
+            onClick={() => setShowSettings(true)}
+            title={t('settingsTitle')}
+            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all shadow-inner"
+          >
+            <SettingsIcon className="w-5 h-5" />
+          </button>
+          <button
             onClick={handleLeave}
-            title="Leave room"
+            title={t('leaveRoom')}
             className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all shadow-inner"
           >
             <LogOut className="w-5 h-5" />
@@ -183,9 +252,9 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                  </div>
               </div>
               <div>
-                <h2 className="text-3xl font-display font-bold text-white mb-2">Waiting for Host</h2>
+                <h2 className="text-3xl font-display font-bold text-white mb-2">{t('waitingForHost')}</h2>
                 <p className="text-base text-text-muted">
-                  Hang tight! The game will begin shortly.
+                  {t('hangTight')}
                 </p>
                 
                 <div className="mt-8 mb-4 max-w-md w-full h-24 flex items-center justify-center p-5 rounded-2xl glass-panel border border-white/10 relative overflow-hidden">
@@ -251,7 +320,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               <div className="glass-panel p-4 rounded-2xl text-center border-white/10 shadow-lg">
                 <p className="text-sm font-medium text-white flex items-center justify-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-warning-accent animate-pulse" />
-                  Host is selecting a question...
+                  {t('hostSelecting')}
                 </p>
               </div>
 
@@ -298,13 +367,13 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
               <div className="glass-panel-heavy p-6 rounded-3xl space-y-4 border border-white/10 shadow-xl">
                 <p className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-warning-accent" /> Standings
+                  <Crown className="w-4 h-4 text-warning-accent" /> {t('standings')}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {players.map((p, i) => (
                     <div
                       key={p.id}
-                      className={`flex items-center justify-between px-4 py-3 rounded-2xl border transition-colors ${
+                      className={`relative flex items-center justify-between px-4 py-3 rounded-2xl border transition-colors ${
                         p.id === myId 
                           ? "bg-primary-accent/15 border-primary-accent/30 shadow-inner" 
                           : "bg-white/5 border-white/5"
@@ -318,10 +387,18 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                         )}
                         <PlayerAvatar seed={p.id} name={p.name} size={28} className="shrink-0 rounded-full" />
                         <span className={`font-bold text-sm truncate ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
-                          {p.name} {p.id === myId && "(You)"}
+                          {p.name} {p.id === myId && `(${t('you')})`}
                         </span>
                       </div>
-                      <span className="font-display font-black text-lg text-white">{p.score}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {(p.streak ?? 0) >= 2 && (
+                          <span className="text-[10px] font-black text-warning-accent uppercase tracking-widest" title={`${p.streak} ${t('inARow')}`}>
+                            🔥 {p.streak}
+                          </span>
+                        )}
+                        <span className="font-display font-black text-lg text-white">{p.score}</span>
+                      </div>
+                      <ScorePopup entries={room.scoreHistory} playerId={p.id} />
                     </div>
                   ))}
                 </div>
@@ -368,6 +445,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 <p className="text-2xl sm:text-3xl font-display font-bold text-white leading-relaxed whitespace-pre-wrap">
                   {room.activeQuestion.text}
                 </p>
+                <ReactionOverlay reactions={room.reactions} />
               </div>
 
               {!hasBuzzed ? (
@@ -381,29 +459,53 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                   >
                     <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                     <Zap className="w-14 h-14 mb-1" />
-                    BUZZ!
+                    {t('buzz')}
                   </motion.button>
                   <p className="text-sm font-bold text-text-muted uppercase tracking-widest animate-pulse">
-                    Be the first to buzz!
+                    {t('beFirstToBuzz')}
                   </p>
                 </div>
               ) : (
                 <div className="glass-panel p-6 rounded-3xl space-y-5 mt-4 shadow-xl">
-                  <div className="flex items-center justify-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10">
-                     <div className="w-3 h-3 rounded-full bg-warning-accent animate-pulse" />
-                     <p className="text-sm font-bold text-white uppercase tracking-widest">You Buzzed In!</p>
+                  <div className="flex items-center justify-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10 flex-col sm:flex-row">
+                     <div className="flex items-center gap-3">
+                       <div className="w-3 h-3 rounded-full bg-warning-accent animate-pulse" />
+                       <p className="text-sm font-bold text-white uppercase tracking-widest">{t('youBuzzedIn')}</p>
+                     </div>
+                     <div className="flex items-center gap-2 sm:pl-4 sm:border-l sm:border-white/10">
+                       {myReaction !== null && (
+                         <span className={`flex items-center gap-1 text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${
+                           myReaction <= 1000 && myQueuePos === 1
+                             ? "bg-warning-accent/20 text-warning-accent border-warning-accent/40"
+                             : "bg-white/5 text-text-muted border-white/10"
+                         }`}>
+                           <Zap className="w-3.5 h-3.5" /> {fmtReaction(myReaction)}
+                         </span>
+                       )}
+{myQueuePos > 1 && (
+                          <span className="text-xs font-black text-primary-accent uppercase tracking-widest">
+                            {t('youAreInQueue', { n: myQueuePos })}
+                          </span>
+                        )}
+                        {myReaction !== null && myReaction <= 1000 && myQueuePos === 1 && (
+                          <span className="text-xs font-black text-primary-accent uppercase tracking-widest hidden sm:inline">
+                            {t('firstBonus', { n: Math.max(1, Math.round((room.activeQuestion?.value ?? 0) * 0.1)) })}
+                          </span>
+                        )}
+                     </div>
                   </div>
                   
                   <AnimatePresence>
                     {sortedBuzzes.length > 0 && (
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Buzz Queue</p>
+                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{t('buzzQueue')}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {sortedBuzzes.map(([pId], idx) => {
+                          {sortedBuzzes.map(([pId, ts], idx) => {
                             const p = room.players[pId];
                             if (!p) return null;
                             const isMe = pId === myId;
                             const isFirst = idx === 0;
+                            const react = reactionFor(ts as number);
                             return (
                               <div
                                 key={pId}
@@ -419,9 +521,25 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                                 <PlayerAvatar seed={p.id} name={p.name} size={28} className="shrink-0 rounded-full" />
                                 <div className="flex-1 min-w-0">
                                   <p className={`font-bold text-sm truncate ${isFirst ? "text-warning-accent" : "text-white"}`}>
-                                    {p.name} {isMe && <span className="text-[10px] ml-1 text-primary-accent">(You)</span>}
+                                    {p.name} {isMe && <span className="text-[10px] ml-1 text-primary-accent">({t('you')})</span>}
                                   </p>
+                                  {(p.streak ?? 0) >= 2 && (
+                                    <p className="text-[10px] font-black text-warning-accent leading-tight mt-0.5">
+                                      🔥 {p.streak} {t('inARow')}
+                                    </p>
+                                  )}
                                 </div>
+                                {fmtReaction(react) && (
+                                  <span
+                                    className={`shrink-0 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border ${
+                                      react !== null && react <= 1000
+                                        ? "bg-warning-accent/20 text-warning-accent border-warning-accent/40"
+                                        : "bg-white/5 text-text-muted border-white/10"
+                                    }`}
+                                  >
+                                    <Zap className="w-3 h-3" /> {fmtReaction(react)}
+                                  </span>
+                                )}
                               </div>
                             );
                           })}
@@ -429,9 +547,30 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  <p className="text-center text-xs font-medium text-text-muted">Waiting for host to judge...</p>
+                  <p className="text-center text-xs font-medium text-text-muted">{t('waitingForHostJudge')}</p>
                 </div>
               )}
+
+              {/* Emoji reactions */}
+              <div className="flex flex-col items-center gap-2 mt-2">
+                <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
+                  {t('react')}
+                </p>
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                  {REACTION_EMOJIS.map((emoji) => (
+                    <motion.button
+                      key={emoji}
+                      onClick={() => handleReact(emoji)}
+                      whileHover={{ scale: 1.2, y: -2 }}
+                      whileTap={{ scale: 0.85 }}
+                      className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 hover:bg-white/15 hover:border-white/25 text-xl flex items-center justify-center transition-colors shadow-inner"
+                      aria-label={`Send ${emoji}`}
+                    >
+                      {emoji}
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
             </motion.div>
           )}
 
@@ -478,7 +617,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               <div className="glass-panel p-6 rounded-3xl space-y-3 mt-4 shadow-xl border border-white/10 text-center">
                 <div className="flex items-center justify-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10">
                   <div className="w-3 h-3 rounded-full bg-warning-accent animate-pulse" />
-                  <p className="text-sm font-bold text-white uppercase tracking-widest">Host is judging...</p>
+                  <p className="text-sm font-bold text-white uppercase tracking-widest">{t('hostIsJudging')}</p>
                 </div>
               </div>
             </motion.div>
@@ -499,7 +638,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               }}
               className="w-full max-w-2xl mx-auto space-y-6"
             >
-              <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10">
+              <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10 relative">
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
                     <img
@@ -517,74 +656,31 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 </p>
                 <div className="p-8 rounded-2xl bg-success-accent/10 border border-success-accent/30 relative overflow-hidden shadow-lg">
                   <div className="absolute top-0 left-0 w-full h-1 bg-success-accent" />
-                  <p className="text-xs font-bold text-success-accent uppercase tracking-widest mb-3">Correct Answer</p>
+                  <p className="text-xs font-bold text-success-accent uppercase tracking-widest mb-3">{t('correctAnswer')}</p>
                   <p className="text-4xl font-display font-black text-white whitespace-pre-wrap">
                     {room.activeQuestion.answer}
                   </p>
                 </div>
+                <ReactionOverlay reactions={room.reactions} />
               </div>
               <div className="glass-panel p-4 rounded-2xl text-center border border-white/5">
                 <p className="text-sm font-medium text-text-muted flex items-center justify-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-white/20 animate-pulse" />
-                  Waiting for host to continue...
+                  {t('waitingForHostContinue')}
                 </p>
               </div>
             </motion.div>
           )}
 
-          {/* ENDED */}
+          {/* ENDED — game-show results with podium, stats & confetti */}
           {room.phase === "ended" && (
-            <motion.div
-              key="ended"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 25,
-                mass: 0.8,
-              }}
-              className="flex flex-col items-center justify-center gap-8 py-10 text-center w-full"
-            >
-              <div className="relative">
-                <div className="absolute inset-0 bg-warning-accent/20 blur-3xl rounded-full" />
-                <Trophy className="w-24 h-24 text-warning-accent relative z-10 drop-shadow-[0_0_30px_rgba(245,158,11,0.5)]" />
-              </div>
-              <h2 className="text-5xl font-display font-black text-white">Final Scores</h2>
-              
-              <div className="w-full max-w-md space-y-3 mt-4">
-                {players.map((p, i) => (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    key={p.id}
-                    className={`flex items-center justify-between px-6 py-4 rounded-2xl border ${
-                      i === 0 
-                        ? "bg-gradient-to-r from-warning-accent/20 to-warning-accent/5 border-warning-accent/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] scale-105 z-10 relative" 
-                        : "bg-white/5 border-white/5"
-                    } ${p.id === myId && i !== 0 ? "ring-2 ring-primary-accent/50" : ""}`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {i === 0 && <Crown className="w-5 h-5 text-warning-accent fill-warning-accent drop-shadow-md" />}
-                      {i !== 0 && <span className="font-bold text-text-muted w-5 text-center">#{i+1}</span>}
-                      <PlayerAvatar seed={p.id} name={p.name} size={32} className="shrink-0 rounded-full ring-2 ring-white/10" />
-                      <span className={`font-bold text-lg truncate ${i === 0 ? "text-warning-accent" : "text-white"}`}>
-                        {p.name} {p.id === myId && <span className="text-sm font-medium text-primary-accent ml-1">(You)</span>}
-                      </span>
-                    </div>
-                    <span className="font-display font-black text-2xl text-white">{p.score}</span>
-                  </motion.div>
-                ))}
-              </div>
-              
-              <button
-                onClick={handleLeave}
-                className="mt-6 px-8 py-4 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-white font-bold text-base transition-all shadow-lg"
-              >
-                Exit Game
-              </button>
-            </motion.div>
+            <ResultsScreen
+              players={players}
+              myId={myId}
+              onExit={handleLeave}
+              exitLabel={t('exitGame')}
+              waitingNote={t('waitingForRematch')}
+            />
           )}
         </AnimatePresence>
       </main>
@@ -627,6 +723,11 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Start-game countdown */}
+      {room.phase === "starting" && <StartCountdown startAt={room.startAt} />}
+
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 };

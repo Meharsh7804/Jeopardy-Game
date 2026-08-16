@@ -15,10 +15,18 @@ import {
   Scissors,
   Info,
   Zap,
-  Trophy
+  Settings as SettingsIcon,
+  QrCode,
 } from "lucide-react";
 import { soundManager } from "../utils/sound";
 import { PlayerAvatar } from "../utils/playerAvatar";
+import { ResultsScreen } from "./ResultsScreen";
+import { ReactionOverlay } from "./ReactionOverlay";
+import { ScorePopup } from "./ScorePopup";
+import { SettingsModal } from "./SettingsModal";
+import { StartCountdown } from "./StartCountdown";
+import { useSettings } from "../context/SettingsContext";
+import { QrJoinModal } from "./QrJoinModal";
 
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
@@ -44,6 +52,7 @@ interface HostRoomProps {
 export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   const {
     room,
+    myId,
     startGame,
     openQuestion,
     judgeAnswer,
@@ -52,10 +61,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     revealAnswer,
     closeQuestion,
     endGame,
+    resetGame,
     kickPlayer,
     leaveRoom,
   } = useRoom();
   const { quizzes } = useQuizLibrary();
+  const { t } = useSettings();
 
   const [copied, setCopied] = useState(false);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -64,6 +75,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   const [showSplit, setShowSplit] = useState(false);
   const [factIndex, setFactIndex] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   useEffect(() => {
     if (room?.phase !== "lobby") return;
@@ -79,11 +92,68 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     setQuiz(found);
   }, [room?.quizId, quizzes]);
 
+  // Game-show fanfare when the game ends.
+  useEffect(() => {
+    if (room?.phase === "ended") soundManager.playWinner();
+  }, [room?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Number keys judge the current buzzer: 1 = Correct, 2 = Wrong. R reveals
+  // the answer, C closes the question. Only active during buzzing with a
+  // pending queue; ignored while typing.
+  useEffect(() => {
+    if (room?.phase !== "buzzing") return;
+    const hasBuzzes = Object.keys(room.buzzes || {}).length > 0;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      const tEl = e.target as HTMLElement | null;
+      if (
+        tEl &&
+        (tEl.tagName === "INPUT" ||
+          tEl.tagName === "TEXTAREA" ||
+          tEl.tagName === "SELECT" ||
+          tEl.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.code === "Digit1" && hasBuzzes) {
+        e.preventDefault();
+        soundManager.playCorrect();
+        judgeAnswer(true);
+      } else if (e.code === "Digit2" && hasBuzzes) {
+        e.preventDefault();
+        soundManager.playWrong();
+        judgeAnswer(false);
+      } else if (e.code === "KeyR" && room.activeQuestion && !room.activeQuestion.revealAnswer) {
+        e.preventDefault();
+        soundManager.playReveal();
+        const aq = quiz?.categories
+          .flatMap((c) => c.questions)
+          .find((q) => q.id === room.activeQuestion!.questionId);
+        revealAnswer(aq?.answer || "");
+      } else if (e.code === "KeyC" && room.activeQuestion) {
+        e.preventDefault();
+        soundManager.playTimerTick();
+        closeQuestion();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [room?.phase, room?.buzzes, room?.activeQuestion, quiz, judgeAnswer, revealAnswer, closeQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!room) return null;
 
   const players = Object.values(room.players).sort((a, b) => b.score - a.score);
   const gamePlayers = players.filter((p) => !p.isHost);
   const sortedBuzzes = Object.entries(room.buzzes || {}).sort((a, b) => a[1] - b[1]);
+
+  // Reaction time helpers — both buzz timestamps and openedAt are resolved by
+  // the Firebase server clock, so the difference is fair across devices.
+  const openedAt =
+    typeof room.activeQuestion?.openedAt === "number" ? room.activeQuestion.openedAt : 0;
+  const reactionFor = (ts: number): number | null =>
+    openedAt > 0 && ts > openedAt ? ts - openedAt : null;
+  const fmtReaction = (ms: number | null) =>
+    ms === null ? null : `${(ms / 1000).toFixed(2)}s`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(room.id).then(() => {
@@ -147,6 +217,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     await undoLastScoreChange();
   };
 
+  const handlePlayAgain = async () => {
+    soundManager.playReveal();
+    await resetGame();
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-primary-bg relative overflow-hidden text-white font-sans">
       {/* Background Ambience */}
@@ -160,7 +235,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             <span className="font-display font-black text-lg text-white">Q</span>
           </div>
           <div>
-            <h1 className="font-display font-bold text-lg text-white leading-tight">Host Dashboard</h1>
+            <h1 className="font-display font-bold text-lg text-white leading-tight">{t('hostDashboard')}</h1>
             <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">{quiz?.title || "Loading..."}</p>
           </div>
         </div>
@@ -174,28 +249,35 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
           title="Click to copy room code"
         >
           <div className="flex flex-col items-end">
-             <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest leading-none mb-1 group-hover:text-primary-accent transition-colors">Room Code</span>
+             <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest leading-none mb-1 group-hover:text-primary-accent transition-colors">{t('roomCode')}</span>
              <span className="font-display font-black text-2xl tracking-[0.25em] text-white leading-none">{room.id}</span>
           </div>
           {copied ? <Check className="w-5 h-5 text-success-accent" /> : <Copy className="w-5 h-5 text-text-muted group-hover:text-white transition-colors" />}
         </motion.div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowQR(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted text-sm font-bold hover:bg-white/10 hover:text-white transition-colors"
+            title={t('qrJoin')}
+          >
+            <QrCode className="w-4 h-4" />
+          </button>
           {scoreHistoryEntries.length > 0 && (
             <>
               <button
                 onClick={() => setShowHistory(true)}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted text-sm font-bold hover:bg-white/10 hover:text-white transition-colors"
-                title="View score history"
+                title={t('scoreHistory')}
               >
-                History
+                {t('history')}
               </button>
               <button
                 onClick={handleUndo}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-warning-accent/10 border border-warning-accent/20 text-warning-accent text-sm font-bold hover:bg-warning-accent/20 transition-colors"
-                title="Undo the most recent score change"
+                title={t('undoLast')}
               >
-                Undo Last
+                {t('undoLast')}
               </button>
             </>
           )}
@@ -204,9 +286,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               onClick={endGame}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-danger-accent/10 border border-danger-accent/20 text-danger-accent text-sm font-bold hover:bg-danger-accent/20 transition-colors"
             >
-              End Game
+              {t('endGame')}
             </button>
           )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-text-muted hover:text-white hover:bg-white/10 transition-all"
+            title={t('settingsTitle')}
+          >
+            <SettingsIcon className="w-5 h-5" />
+          </button>
           <button
             onClick={handleLeave}
             className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-text-muted hover:text-white hover:bg-white/10 transition-all"
@@ -231,9 +320,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             >
               <div className="text-center space-y-4">
                  <h2 className="text-5xl md:text-6xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70">
-                   Waiting for Players
+                   {t('waitingForPlayers')}
                  </h2>
-                 <p className="text-lg text-text-muted">Tell your players to join using the code in the top right.</p>
+                 <p className="text-lg text-text-muted">{t('tellPlayersJoin')}</p>
                  
                  <div className="mx-auto mt-4 max-w-lg h-20 flex items-center justify-center p-4 rounded-2xl glass-panel border border-white/10 relative overflow-hidden">
                     <AnimatePresence mode="wait">
@@ -262,7 +351,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           className="flex flex-col items-center gap-4 py-12 px-20 border-2 border-dashed border-white/10 rounded-3xl bg-white/5"
                         >
                            <div className="w-12 h-12 rounded-full border-t-2 border-primary-accent animate-spin" />
-                           <p className="text-text-muted font-bold tracking-widest uppercase text-sm">Listening for connections...</p>
+                           <p className="text-text-muted font-bold tracking-widest uppercase text-sm">{t('listeningForConnections')}</p>
                         </motion.div>
                       ) : (
                         gamePlayers.map((p, i) => (
@@ -318,7 +407,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   className="px-10 py-5 rounded-2xl premium-btn font-display font-black text-xl text-white shadow-[0_0_40px_rgba(99,102,241,0.4)] disabled:opacity-50 disabled:shadow-none hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group"
                 >
                   <Play className="w-6 h-6 fill-current group-hover:translate-x-1 transition-transform" />
-                  START GAME
+                  {t('startGame')}
                 </button>
               </motion.div>
             </motion.div>
@@ -343,7 +432,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                 <div className="flex items-center justify-between bg-black/30 p-3 rounded-2xl border border-white/5 backdrop-blur-md shadow-lg">
                   <h2 className="font-display font-black text-2xl text-white tracking-tight">{quiz.title}</h2>
                   <span className="text-xs font-bold text-primary-accent px-3 py-1 bg-primary-accent/10 rounded-xl border border-primary-accent/20 uppercase tracking-widest">
-                    Board Phase
+                    {t('boardPhase')}
                   </span>
                 </div>
 
@@ -401,7 +490,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               <div className="w-full xl:w-80 shrink-0 glass-panel-heavy rounded-3xl border border-white/10 shadow-2xl overflow-hidden sticky top-6">
                 <div className="p-5 border-b border-white/5 bg-black/20">
                    <p className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
-                     <Crown className="w-4 h-4 text-warning-accent" /> Leaderboard
+                     <Crown className="w-4 h-4 text-warning-accent" /> {t('leaderboard')}
                    </p>
                 </div>
                 <div className="p-3 max-h-[70vh] overflow-y-auto custom-scrollbar space-y-2">
@@ -419,8 +508,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           damping: 50,
                           mass: 0.8,
                         }}
-                        className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
+                        className="relative flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
                       >
+                        <ScorePopup entries={room.scoreHistory} playerId={p.id} />
                         <div className="flex items-center gap-3 min-w-0">
                           {i === 0 && p.score > 0 ? (
                             <Crown className="w-4 h-4 text-warning-accent fill-warning-accent shrink-0" />
@@ -430,7 +520,14 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           <PlayerAvatar seed={p.id} name={p.name} size={32} className="shrink-0 rounded-full" />
                           <span className="font-bold text-sm text-white truncate">{p.name}</span>
                         </div>
-                        <span className="font-display font-black text-base text-white">{p.score}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {(p.streak ?? 0) >= 2 && (
+                            <span className="text-[10px] font-black text-warning-accent uppercase tracking-widest" title={`${p.streak} in a row`}>
+                              🔥 {p.streak}
+                            </span>
+                          )}
+                          <span className="font-display font-black text-base text-white">{p.score}</span>
+                        </div>
                       </motion.div>
                     ))}
                   </AnimatePresence>
@@ -484,6 +581,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   <p className="text-3xl md:text-5xl font-display font-black text-white leading-tight whitespace-pre-wrap px-4 drop-shadow-lg">
                     {room.activeQuestion.text}
                   </p>
+
+                  <ReactionOverlay reactions={room.reactions} />
                   
                   {/* Host-only Answer visibility (before reveal) */}
                   {!room.activeQuestion.revealAnswer && activeLocalQuestion?.answer && (
@@ -494,7 +593,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     >
                        <div className="absolute top-0 left-0 w-1.5 h-full bg-primary-accent" />
                        <p className="text-[10px] font-bold text-primary-accent uppercase tracking-widest mb-2 pl-3 flex items-center gap-2">
-                         <Eye className="w-3 h-3" /> Host Only: Correct Answer
+                         <Eye className="w-3 h-3" /> {t('hostOnlyAnswer')}
                        </p>
                        <p className="text-xl font-bold text-white whitespace-pre-wrap pl-3">{activeLocalQuestion.answer}</p>
                     </motion.div>
@@ -515,7 +614,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     >
                       <div className="absolute top-0 left-0 w-2 h-full bg-success-accent" />
                       <p className="text-xs font-bold text-success-accent uppercase tracking-widest mb-3 pl-4 flex items-center gap-2">
-                        <Check className="w-4 h-4" /> Revealed Answer
+                        <Check className="w-4 h-4" /> {t('revealedAnswer')}
                       </p>
                       <p className="text-3xl font-display font-black text-white whitespace-pre-wrap pl-4 drop-shadow-md">
                         {room.activeQuestion.answer}
@@ -532,15 +631,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                       className="flex-1 flex items-center justify-center gap-3 px-6 py-5 rounded-2xl bg-white/10 border border-white/10 text-white font-bold hover:bg-white/20 transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 text-lg"
                     >
                       <Eye className="w-5 h-5" />
-                      Reveal Answer
+                      {t('revealAnswer')}
                     </button>
                   )}
                   <button
                     onClick={closeQuestion}
                     className="flex-1 flex items-center justify-center gap-3 px-6 py-5 rounded-2xl bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 font-bold transition-all shadow-inner hover:-translate-y-1 text-lg"
                   >
-                    <ChevronRight className="w-5 h-5" />
-                    Close Question
+<ChevronRight className="w-5 h-5" />
+                      {t('closeQuestion')}
                   </button>
                 </div>
               </div>
@@ -552,14 +651,21 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                    
                    <div className="flex items-center justify-between mb-6">
                      <p className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-warning-accent" /> Buzz Queue
+                        <Zap className="w-4 h-4 text-warning-accent" /> {t('buzzQueue')}
                      </p>
                      <button
                        onClick={() => { setShowSplit(!showSplit); setSplitSelected([]); }}
                        className="flex items-center gap-1.5 text-[10px] text-text-muted hover:text-white transition font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5"
                      >
-                       <Scissors className="w-3.5 h-3.5" /> Split
+                       <Scissors className="w-3.5 h-3.5" /> {t('split')}
                      </button>
+                   </div>
+
+                   <div className="flex items-center gap-2 flex-wrap mb-4 text-[9px] font-bold uppercase tracking-widest text-text-muted">
+                     <span className="flex items-center gap-1"><span className="kbd">1</span> {t('correct')}</span>
+                     <span className="flex items-center gap-1"><span className="kbd">2</span> {t('wrong')}</span>
+                     <span className="flex items-center gap-1"><span className="kbd">R</span> {t('revealAnswer')}</span>
+                     <span className="flex items-center gap-1"><span className="kbd">C</span> {t('closeQuestion')}</span>
                    </div>
 
                    <AnimatePresence>
@@ -602,10 +708,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                    <div className="space-y-3 min-h-[200px]">
                      <AnimatePresence mode="popLayout">
                        {sortedBuzzes.length > 0 ? (
-                         sortedBuzzes.map(([pId], idx) => {
+                         sortedBuzzes.map(([pId, ts], idx) => {
                            const p = room.players[pId];
                            if (!p) return null;
                            const isFirst = idx === 0;
+                           const react = reactionFor(ts as number);
+                           const fast = react !== null && react <= 1000;
                            return (
                              <motion.div
                                layout
@@ -634,28 +742,51 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                    <p className={`font-display font-black text-lg truncate leading-tight ${isFirst ? "text-warning-accent" : "text-white"}`}>
                                      {p.name}
                                    </p>
-                                   <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">Score: {p.score}</p>
+                                   <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
+                                     Score: {p.score}
+                                     {(p.streak ?? 0) >= 2 && (
+                                       <span className="text-warning-accent ml-2">🔥 {p.streak} streak</span>
+                                     )}
+                                   </p>
                                  </div>
+                                 {fmtReaction(react) && (
+                                   <span
+                                     className={`shrink-0 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border ${
+                                       fast
+                                         ? "bg-warning-accent/20 text-warning-accent border-warning-accent/40"
+                                         : "bg-white/5 text-text-muted border-white/10"
+                                     }`}
+                                   >
+                                     <Zap className="w-3 h-3" /> {fmtReaction(react)}
+                                   </span>
+                                 )}
                                </div>
                                
                                {isFirst && (
                                  <motion.div 
                                    initial={{ opacity: 0, height: 0 }} 
                                    animate={{ opacity: 1, height: "auto" }} 
-                                   className="flex gap-2 pt-2 border-t border-warning-accent/20"
+                                   className="flex flex-col gap-2 pt-2 border-t border-warning-accent/20"
                                  >
-                                   <button
-                                     onClick={() => handleJudge(true)}
-                                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-success-accent text-white hover:bg-emerald-400 transition-all shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 active:translate-y-0"
-                                   >
-                                     <Check className="w-5 h-5 font-bold" /> <span className="font-bold text-sm">Correct</span>
-                                   </button>
-                                   <button
-                                     onClick={() => handleJudge(false)}
-                                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-danger-accent text-white hover:bg-rose-400 transition-all shadow-[0_4px_15px_rgba(244,63,94,0.3)] hover:-translate-y-0.5 active:translate-y-0"
-                                   >
-                                     <X className="w-5 h-5 font-bold" /> <span className="font-bold text-sm">Wrong</span>
-                                   </button>
+                                   {fast && (
+                                     <p className="text-[10px] font-black text-warning-accent uppercase tracking-widest text-center">
+                                       ⚡ Fast buzz — +${Math.max(1, Math.round((room.activeQuestion?.value ?? 0) * 0.1))} bonus on correct
+                                     </p>
+                                   )}
+                                   <div className="flex gap-2">
+                                     <button
+                                       onClick={() => handleJudge(true)}
+                                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-success-accent text-white hover:bg-emerald-400 transition-all shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 active:translate-y-0"
+                                     >
+                                       <Check className="w-5 h-5 font-bold" /> <span className="font-bold text-sm">{t('correct')}</span>
+                                     </button>
+                                     <button
+                                       onClick={() => handleJudge(false)}
+                                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-danger-accent text-white hover:bg-rose-400 transition-all shadow-[0_4px_15px_rgba(244,63,94,0.3)] hover:-translate-y-0.5 active:translate-y-0"
+                                     >
+                                       <X className="w-5 h-5 font-bold" /> <span className="font-bold text-sm">{t('wrong')}</span>
+                                     </button>
+                                   </div>
                                  </motion.div>
                                )}
                              </motion.div>
@@ -670,9 +801,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
                               <Zap className="w-6 h-6 text-text-muted animate-pulse" />
                            </div>
-                           <p className="text-sm font-bold text-text-muted uppercase tracking-widest">Waiting for buzzes...</p>
+<p className="text-sm font-bold text-text-muted uppercase tracking-widest">{t('waitingForBuzzes')}</p>
                          </motion.div>
-                       )}
+                        )}
                      </AnimatePresence>
                    </div>
                 </div>
@@ -680,68 +811,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             </motion.div>
           )}
 
-          {/* ENDED PHASE */}
+          {/* ENDED PHASE — game-show results with podium, stats & rematch */}
           {room.phase === "ended" && (
-            <motion.div
-              key="ended"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{
-                type: "spring",
-                stiffness: 1000,  // High stiffness = instant spring (no bounce)
-                damping: 50,
-                mass: 0.8,
-              }}
-              className="flex flex-col items-center justify-center min-h-[75vh] gap-10 text-center p-8 w-full"
-            >
-              <div className="relative">
-                <div className="absolute inset-0 bg-warning-accent/30 blur-[100px] rounded-full" />
-                <Trophy className="w-28 h-28 text-warning-accent drop-shadow-[0_0_40px_rgba(245,158,11,0.6)] relative z-10" />
-              </div>
-              <h2 className="text-6xl md:text-7xl font-display font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50">
-                Game Over!
-              </h2>
-              
-              <div className="w-full max-w-2xl space-y-4 mt-6">
-                {gamePlayers.map((p, i) => (
-                  <motion.div
-                    initial={{ opacity: 0, x: -30 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 1000,  // High stiffness = instant spring (no bounce)
-                      damping: 50,
-                      mass: 0.8,
-                      delay: i * 0.1
-                    }}
-                    key={p.id}
-                    className={`flex items-center justify-between px-8 py-6 rounded-3xl border ${
-                      i === 0 
-                        ? "bg-gradient-to-r from-warning-accent/20 to-warning-accent/5 border-warning-accent/40 shadow-[0_0_30px_rgba(245,158,11,0.2)] scale-105 z-10 relative" 
-                        : "bg-white/5 border-white/5 hover:bg-white/10 transition-colors"
-                    }`}
-                  >
-                    <div className="flex items-center gap-4 min-w-0">
-                      {i === 0 && <Crown className="w-6 h-6 text-warning-accent fill-warning-accent drop-shadow-md" />}
-                      {i !== 0 && <span className="font-black text-text-muted w-6 text-center text-xl">#{i+1}</span>}
-                      <PlayerAvatar seed={p.id} name={p.name} size={48} className="shrink-0 rounded-full ring-2 ring-white/10" />
-                      <span className={`font-display font-black text-2xl truncate ${i === 0 ? "text-warning-accent" : "text-white"}`}>{p.name}</span>
-                    </div>
-                    <span className="font-display font-black text-4xl text-white drop-shadow-md">{p.score}</span>
-                  </motion.div>
-                ))}
-              </div>
-              
-              <motion.button
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                onClick={handleLeave}
-                className="mt-8 px-10 py-5 rounded-2xl bg-white text-black font-display font-black text-xl hover:bg-gray-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95"
-              >
-                Return to Lobby
-              </motion.button>
-            </motion.div>
+            <ResultsScreen
+              players={gamePlayers}
+              myId={myId}
+              onPlayAgain={handlePlayAgain}
+              onExit={handleLeave}
+              exitLabel={t('returnToLobby')}
+            />
           )}
         </AnimatePresence>
       </main>
@@ -816,12 +894,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               >
                 <X className="w-5 h-5" />
               </button>
-              <h3 className="text-3xl font-display font-black text-white leading-tight pr-8">Score History</h3>
-              <p className="text-sm text-text-muted -mt-4">Every score change this game, most recent first. Misjudged a call? Use "Undo Last" to revert it.</p>
+              <h3 className="text-3xl font-display font-black text-white leading-tight pr-8">{t('scoreHistory')}</h3>
+              <p className="text-sm text-text-muted -mt-4">{t('everyScoreChange')}</p>
               <div className="h-px w-full bg-gradient-to-r from-white/20 to-transparent" />
               <div className="max-h-[50vh] overflow-y-auto custom-scrollbar space-y-2 pr-1">
                 {scoreHistoryEntries.length === 0 ? (
-                  <p className="text-sm text-text-muted text-center py-6">No score changes yet.</p>
+                  <p className="text-sm text-text-muted text-center py-6">{t('noScoreChangesYet')}</p>
                 ) : (
                   scoreHistoryEntries.map((entry, i) => (
                     <div
@@ -848,13 +926,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   onClick={handleUndo}
                   className="w-full py-3 rounded-xl bg-warning-accent/10 border border-warning-accent/20 text-warning-accent text-sm font-bold hover:bg-warning-accent/20 transition-colors"
                 >
-                  Undo Most Recent Change
+                  {t('undoMostRecent')}
                 </button>
               )}
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Start-game countdown */}
+      {room.phase === "starting" && <StartCountdown startAt={room.startAt} />}
+
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <QrJoinModal open={showQR} onClose={() => setShowQR(false)} roomId={room.id} />
     </div>
   );
 };

@@ -1,18 +1,32 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useRoom } from '../context/RoomContext';
-import { useQuizLibrary } from '../context/QuizLibraryContext';
-import type { Quiz } from '../types/jeopardy';
-import { Play, LogIn, BookOpen, Plus, ChevronRight, Zap, Loader2, MonitorPlay, Users, HelpCircle, Lightbulb, Brain, Award, Sparkles } from 'lucide-react';
-
-const FLOATING_ICONS = [
-  { Icon: HelpCircle, top: '10%', left: '5%', size: 48, delay: 0 },
-  { Icon: Lightbulb, top: '20%', right: '10%', size: 64, delay: 1.5 },
-  { Icon: Brain, bottom: '15%', left: '15%', size: 56, delay: 3 },
-  { Icon: Award, bottom: '25%', right: '5%', size: 72, delay: 4.5 },
-  { Icon: Sparkles, top: '40%', left: '80%', size: 40, delay: 2 },
-  { Icon: HelpCircle, bottom: '40%', left: '10%', size: 36, delay: 3.5 },
-];
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useRoom } from "../context/RoomContext";
+import { useQuizLibrary } from "../context/QuizLibraryContext";
+import { useSettings } from "../context/SettingsContext";
+import type { Quiz } from "../types/jeopardy";
+import {
+  Play,
+  LogIn,
+  Loader2,
+  Plus,
+  Pencil,
+  X,
+  MonitorPlay,
+  LayoutGrid,
+  Zap,
+  Settings as SettingsIcon,
+  Trophy,
+  Flame,
+  Timer,
+  Target,
+  Coins,
+  Tag,
+  ChevronDown,
+} from "lucide-react";
+import { PlayerAvatar } from "../utils/playerAvatar";
+import { SettingsModal } from "./SettingsModal";
+import { HeroQuizArena } from "./HeroQuizArena";
+import { loadProfile, saveProfileName } from "../utils/profile";
 
 interface RoomLobbyProps {
   onHostEntersRoom: () => void;
@@ -21,330 +35,585 @@ interface RoomLobbyProps {
   onEditQuiz: (quiz: Quiz) => void;
 }
 
-type LobbyTab = 'home' | 'host' | 'join';
-
 export const RoomLobby: React.FC<RoomLobbyProps> = ({
   onHostEntersRoom,
   onPlayerEntersRoom,
   onCreateQuiz,
   onEditQuiz,
 }) => {
-  const { createRoom, joinRoom, loading, error } = useRoom();
+  const { createRoom, joinRoom, loading, error, myId } = useRoom();
   const { quizzes } = useQuizLibrary();
+  const { t } = useSettings();
+  const reduce = !!useReducedMotion();
 
-  const [tab, setTab] = useState<LobbyTab>('home');
-  const [hostName, setHostName] = useState('');
-  const [selectedQuizId, setSelectedQuizId] = useState<string>(quizzes[0]?.id ?? '');
-  const [playerName, setPlayerName] = useState('');
-  const [roomCode, setRoomCode] = useState('');
-  const [localError, setLocalError] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [howToOpen, setHowToOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const [hostName, setHostName] = useState("");
+  const [selectedQuizId, setSelectedQuizId] = useState<string>(quizzes[0]?.id ?? "");
+  const [playerName, setPlayerName] = useState(() => loadProfile().name || "");
+  const [roomCode, setRoomCode] = useState("");
+  const [localError, setLocalError] = useState("");
+  const profile = loadProfile();
+
+  const totalAnswered = profile.totalCorrect + profile.totalWrong;
+  const accuracy =
+    totalAnswered > 0 ? Math.round((profile.totalCorrect / totalAnswered) * 100) : null;
 
   const selectedQuiz = quizzes.find((q) => q.id === selectedQuizId) ?? quizzes[0];
 
+  // QR join: prefill the room code when arriving via /?join=CODE
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = (params.get("join") || "").toUpperCase().trim();
+    if (code) {
+      setRoomCode(code);
+      setJoinOpen(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   const handleHost = async () => {
-    setLocalError('');
-    if (!hostName.trim()) { setLocalError('Please enter your host name.'); return; }
-    if (!selectedQuiz) { setLocalError('Please select a quiz.'); return; }
+    setLocalError("");
+    if (!hostName.trim()) {
+      setLocalError(t("errorEnterHostName"));
+      return;
+    }
+    if (!selectedQuiz) {
+      setLocalError(t("errorSelectQuiz"));
+      return;
+    }
     try {
       await createRoom(selectedQuiz, hostName.trim());
       onHostEntersRoom();
     } catch (e: any) {
-      setLocalError(e.message ?? 'Failed to create room.');
+      setLocalError(e.message ?? t("errorCreateFailed"));
     }
   };
 
   const handleJoin = async () => {
-    setLocalError('');
-    if (!playerName.trim()) { setLocalError('Please enter your name.'); return; }
-    if (roomCode.trim().length !== 6) { setLocalError('Room code must be 6 characters.'); return; }
+    setLocalError("");
+    if (!playerName.trim()) {
+      setLocalError(t("errorEnterName"));
+      return;
+    }
+    if (roomCode.trim().length !== 6) {
+      setLocalError(t("errorCodeLength"));
+      return;
+    }
     try {
+      saveProfileName(playerName.trim());
       await joinRoom(roomCode.trim(), playerName.trim());
       onPlayerEntersRoom();
     } catch (e: any) {
-      setLocalError(e.message ?? 'Could not join room.');
+      setLocalError(e.message ?? t("errorJoinFailed"));
     }
   };
 
+  const fmtFastest = (ms: number | null) =>
+    ms === null ? "—" : `${(ms / 1000).toFixed(2)}s`;
+
+  const modalPanel =
+    "glass-panel-heavy rounded-[2rem] p-8 w-full space-y-6 relative border border-white/20 shadow-[0_0_80px_rgba(0,0,0,0.6)] max-h-[calc(100vh-4rem)] overflow-y-auto custom-scrollbar";
+  const closeBtn =
+    "absolute top-5 right-5 p-2 rounded-full bg-white/10 border border-white/10 text-text-muted hover:text-white hover:bg-white/20 transition-all";
+  const inputBase =
+    "w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white font-medium outline-none focus:ring-1 transition-all placeholder:text-text-muted/40 shadow-inner";
+
+  const howToSteps = [
+    { Icon: MonitorPlay, title: t("htpStep1Title"), desc: t("htpStep1Desc") },
+    { Icon: LayoutGrid, title: t("htpStep2Title"), desc: t("htpStep2Desc") },
+    { Icon: Zap, title: t("htpStep3Title"), desc: t("htpStep3Desc") },
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 sm:p-12 overflow-hidden relative">
-      {/* Abstract Background Elements */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary-accent/20 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary-accent/20 blur-[120px] rounded-full pointer-events-none" />
+    <div className="min-h-screen flex flex-col relative overflow-hidden bg-primary-bg text-white font-sans">
+      {/* Ambient background */}
+      <div className="absolute top-[-15%] left-[-10%] w-[45%] h-[45%] bg-primary-accent/15 blur-[140px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-[-15%] right-[-10%] w-[45%] h-[45%] bg-secondary-accent/12 blur-[140px] rounded-full pointer-events-none" />
 
-      {/* Floating Trivia Icons */}
-      {FLOATING_ICONS.map((item, i) => (
+      {/* ── Minimal navigation ─────────────────────────────────────────── */}
+      <header className="relative z-40 w-full max-w-7xl mx-auto px-5 sm:px-10 pt-6 pb-2 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-accent to-secondary-accent flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.35)]">
+            <span className="font-display font-black text-lg text-white">BQ</span>
+          </div>
+          <span className="hidden sm:block font-display font-extrabold text-xs tracking-[0.2em] text-white uppercase">
+            Buzzing With Quizzing
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setHowToOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest text-text-muted hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all"
+          >
+            {t("howToPlay")}
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-3 rounded-xl glass-panel border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all shadow-lg"
+            aria-label={t("settingsTitle")}
+            title={t("settingsTitle")}
+          >
+            <SettingsIcon className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* ── Hero ───────────────────────────────────────────────────────── */}
+      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-5 sm:px-10 py-8 lg:py-16 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-10 items-center">
+        {/* Left: headline + CTAs */}
         <motion.div
-          key={i}
-          initial={{ y: 0, opacity: 0 }}
-          animate={{ 
-            y: [-20, 20, -20], 
-            rotate: [-10, 10, -10],
-            opacity: [0.95, 0.85, 0.75]
-          }}
-          transition={{ 
-            duration: 8 + (i % 4), 
-            repeat: Infinity, 
-            ease: "easeInOut",
-            delay: item.delay
-          }}
-          className="absolute pointer-events-none text-white/10"
-          style={{ top: item.top, left: item.left, right: item.right, bottom: item.bottom }}
-        >
-          <item.Icon size={item.size} />
-        </motion.div>
-      ))}
-
-      <div className="w-full max-w-xl z-10 space-y-10">
-        {/* Hero Section */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center space-y-4"
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-col items-center lg:items-start text-center lg:text-left"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-text-main font-semibold tracking-widest uppercase mb-4 shadow-lg backdrop-blur-md">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-text-main font-semibold tracking-widest uppercase shadow-lg backdrop-blur-md">
             <Zap className="w-4 h-4 text-warning-accent" />
-            Live Multiplayer
+            {t("liveMultiplayer")}
           </div>
-          <h1 className="text-5xl sm:text-7xl font-bold tracking-tight text-white leading-[1.1]">
-            Buzzing <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-accent to-secondary-accent">With Quizzing</span>
-          </h1>
-          <p className="text-text-muted text-base sm:text-lg max-w-md mx-auto leading-relaxed">
-            Host an immersive live game, ask questions, buzz in fast, and dominate the leaderboard.
-          </p>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-5 font-display font-black tracking-tight leading-[0.95] text-5xl sm:text-7xl xl:text-[5.25rem] text-white"
+          >
+            THINK FAST.
+            <span className="block mt-1 text-transparent bg-clip-text bg-gradient-to-r from-primary-accent to-secondary-accent">
+              BUZZ FASTER.
+            </span>
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-5 text-text-muted text-base sm:text-lg leading-relaxed max-w-md"
+          >
+            {t("heroTagline")}
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-7 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 w-full sm:w-auto"
+          >
+            <button
+              onClick={() => {
+                setLocalError("");
+                setCreateOpen(true);
+              }}
+              className="group flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl premium-btn font-display font-black text-base uppercase tracking-wide hover:[filter:brightness(1.08)]"
+            >
+              <Play className="w-5 h-5 fill-current transition-transform duration-300 group-hover:translate-x-0.5" />
+              {t("createGame")}
+            </button>
+            <button
+              onClick={() => {
+                setLocalError("");
+                setJoinOpen(true);
+              }}
+              className="group flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl bg-white text-[#0b1020] hover:bg-gray-100 font-display font-black text-base uppercase tracking-wide shadow-[0_0_25px_rgba(255,255,255,0.15)] hover:shadow-[0_0_35px_rgba(255,255,255,0.25)] hover:-translate-y-0.5 active:translate-y-0 transition-all"
+            >
+              <LogIn className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              {t("joinGame")}
+            </button>
+          </motion.div>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+            className="mt-8 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.3em] text-transparent bg-clip-text bg-gradient-to-r from-primary-accent/80 to-secondary-accent/80"
+          >
+            <span className="w-8 h-px bg-gradient-to-r from-primary-accent/60 to-transparent" />
+            Buzzing With Quizzing
+          </motion.p>
         </motion.div>
 
-        {/* Interactive Panel */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
-          className="glass-panel rounded-3xl overflow-hidden shadow-2xl relative"
+        {/* Right: interactive quiz arena */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full lg:justify-self-end"
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
-          
-          {/* Tab Navigation */}
-          <div className="flex border-b border-white/10 bg-black/20 relative z-10">
-            {(['home', 'host', 'join'] as LobbyTab[]).map((t) => (
+          <HeroQuizArena />
+        </motion.div>
+
+        {/* Scroll cue */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1, delay: 0.9 }}
+          className="col-span-1 lg:col-span-2 flex flex-col items-center gap-2 mt-12 lg:mt-16"
+        >
+          <span className="text-[9px] font-black tracking-[0.3em] text-text-muted uppercase">
+            {t("scrollToExplore")}
+          </span>
+          <motion.span
+            animate={reduce ? { y: 0 } : { y: [0, 4, 0] }}
+            transition={{ duration: 2.2, ease: "easeInOut", repeat: Infinity }}
+          >
+            <ChevronDown className="w-4 h-4 text-primary-accent" />
+          </motion.span>
+        </motion.div>
+      </main>
+
+      {/* ── Create Game modal ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {createOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl"
+            onClick={() => setCreateOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className={`${modalPanel} max-w-lg`}
+              onClick={(e) => e.stopPropagation()}
+            >
               <button
-                key={t}
-                onClick={() => { setTab(t); setLocalError(''); }}
-                className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-all duration-300 relative ${
-                  tab === t
-                    ? 'text-white'
-                    : 'text-text-muted hover:text-white hover:bg-white/5'
-                }`}
+                onClick={() => setCreateOpen(false)}
+                className={closeBtn}
+                aria-label={t("close")}
               >
-                {tab === t && (
-                  <motion.div
-                    layoutId="active-tab"
-                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-accent"
-                  />
-                )}
-                {t === 'home' ? 'Home' : t === 'host' ? 'Host' : 'Join'}
+                <X className="w-4 h-4" />
               </button>
-            ))}
-          </div>
 
-          <div className="p-6 sm:p-8 relative z-10">
-            <AnimatePresence mode="wait">
-              {/* ── HOME TAB ───────────────────────────────────────────── */}
-              {tab === 'home' && (
-                <motion.div
-                  key="home"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-4"
-                >
+              <h3 className="text-3xl font-display font-black text-white leading-tight pr-8 flex items-center gap-3">
+                <span className="w-11 h-11 rounded-2xl bg-primary-accent/20 flex items-center justify-center border border-primary-accent/30 shadow-inner">
+                  <MonitorPlay className="w-5 h-5 text-primary-accent" />
+                </span>
+                {t("createGame")}
+              </h3>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">
+                  {t("hostName")}
+                </label>
+                <input
+                  type="text"
+                  placeholder={t("hostNamePh")}
+                  value={hostName}
+                  onChange={(e) => setHostName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleHost()}
+                  className={`${inputBase} focus:border-primary-accent focus:ring-primary-accent`}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
+                    {t("selectQuizPack")}
+                  </label>
                   <button
-                    onClick={() => setTab('host')}
-                    className="w-full flex items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-primary-accent/50 hover:bg-white/10 transition-all group"
+                    onClick={onCreateQuiz}
+                    className="flex items-center gap-1.5 text-xs font-bold text-primary-accent hover:text-primary-hover transition"
                   >
-                    <div className="flex items-center gap-4 text-left">
-                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary-accent/20 to-primary-accent/5 text-primary-accent border border-primary-accent/20 group-hover:scale-110 transition-transform">
-                        <MonitorPlay className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-base text-white">Host a Game</p>
-                        <p className="text-sm text-text-muted">Create a room and control the board</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-text-muted group-hover:text-primary-accent transition-colors group-hover:translate-x-1" />
+                    <Plus className="w-3.5 h-3.5" />
+                    {t("newQuiz")}
                   </button>
-
-                  <button
-                    onClick={() => setTab('join')}
-                    className="w-full flex items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-secondary-accent/50 hover:bg-white/10 transition-all group"
-                  >
-                    <div className="flex items-center gap-4 text-left">
-                      <div className="p-3 rounded-xl bg-gradient-to-br from-secondary-accent/20 to-secondary-accent/5 text-secondary-accent border border-secondary-accent/20 group-hover:scale-110 transition-transform">
-                        <Users className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-base text-white">Join a Game</p>
-                        <p className="text-sm text-text-muted">Enter a code, buzz in, win points</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-text-muted group-hover:text-secondary-accent transition-colors group-hover:translate-x-1" />
-                  </button>
-
-                  <div className="pt-6 mt-4 border-t border-white/10">
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold">Quiz Library</p>
+                </div>
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1 custom-scrollbar">
+                  {quizzes.map((q) => (
+                    <div
+                      key={q.id}
+                      className={`group flex items-center gap-2 p-3.5 rounded-xl border transition-all ${
+                        selectedQuizId === q.id
+                          ? "bg-primary-accent/20 border-primary-accent/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]"
+                          : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10"
+                      }`}
+                    >
                       <button
-                        onClick={onCreateQuiz}
-                        className="flex items-center gap-1.5 text-xs font-bold text-primary-accent hover:text-primary-hover transition"
+                        onClick={() => setSelectedQuizId(q.id)}
+                        className="flex-1 text-left min-w-0"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        New Quiz
-                      </button>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2">
-                      {quizzes.slice(0, 3).map((q) => (
-                        <button
-                          key={q.id}
-                          onClick={() => onEditQuiz(q)}
-                          className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/20 transition group"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <BookOpen className="w-4 h-4 text-text-muted group-hover:text-white shrink-0 transition" />
-                            <span className="text-sm text-text-muted group-hover:text-white font-medium truncate">{q.title}</span>
-                          </div>
-                          <span className="text-[10px] text-text-muted/50 uppercase font-bold tracking-wider opacity-0 group-hover:opacity-100 transition">Edit</span>
-                        </button>
-                      ))}
-                      {quizzes.length === 0 && (
-                         <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
-                           <p className="text-sm text-text-muted">No quizzes yet.</p>
-                         </div>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* ── HOST TAB ───────────────────────────────────────────── */}
-              {tab === 'host' && (
-                <motion.div
-                  key="host"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-6"
-                >
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Host Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Alex (Host)"
-                      value={hostName}
-                      onChange={(e) => setHostName(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleHost()}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white font-medium outline-none focus:border-primary-accent focus:ring-1 focus:ring-primary-accent transition-all placeholder:text-text-muted/40 shadow-inner"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Select Quiz Pack</label>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                      {quizzes.map((q) => (
-                        <button
-                          key={q.id}
-                          onClick={() => setSelectedQuizId(q.id)}
-                          className={`w-full text-left p-4 rounded-xl border transition-all ${
-                            selectedQuizId === q.id
-                              ? 'bg-primary-accent/20 border-primary-accent/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]'
-                              : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
+                        <p
+                          className={`font-bold text-sm truncate ${
+                            selectedQuizId === q.id ? "text-primary-accent" : "text-white"
                           }`}
                         >
-                          <p className={`font-bold text-sm ${selectedQuizId === q.id ? 'text-primary-accent' : 'text-white'}`}>{q.title}</p>
-                          <p className="text-xs text-text-muted mt-1 truncate">{q.description}</p>
-                        </button>
-                      ))}
-                      {quizzes.length === 0 && (
-                         <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
-                           <p className="text-sm text-text-muted mb-2">You need a quiz to host.</p>
-                           <button onClick={onCreateQuiz} className="text-xs text-primary-accent hover:underline font-bold">Create one now</button>
-                         </div>
-                      )}
+                          {q.title}
+                        </p>
+                        <p className="text-xs text-text-muted mt-0.5 truncate">{q.description}</p>
+                      </button>
+                      <button
+                        onClick={() => onEditQuiz(q)}
+                        title={t("edit")}
+                        className="shrink-0 p-2 rounded-lg bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {quizzes.length === 0 && (
+                    <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
+                      <p className="text-sm text-text-muted mb-2">{t("needQuizToHost")}</p>
+                      <button
+                        onClick={onCreateQuiz}
+                        className="text-xs text-primary-accent hover:underline font-bold"
+                      >
+                        {t("createOneNow")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {(localError || error) && (
+                <motion.p
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-xs text-danger-accent bg-danger-accent/10 border border-danger-accent/20 rounded-lg px-4 py-3 font-medium"
+                >
+                  {localError || error}
+                </motion.p>
+              )}
+
+              <button
+                onClick={handleHost}
+                disabled={loading || quizzes.length === 0}
+                className="w-full flex items-center justify-center gap-2 py-4 premium-btn font-bold rounded-xl text-sm"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+                {t("createRoomAndHost")}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Join Game modal ────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {joinOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl"
+            onClick={() => setJoinOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className={`${modalPanel} max-w-md`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setJoinOpen(false)}
+                className={closeBtn}
+                aria-label={t("close")}
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <h3 className="text-3xl font-display font-black text-white leading-tight pr-8 flex items-center gap-3">
+                <span className="w-11 h-11 rounded-2xl bg-secondary-accent/20 flex items-center justify-center border border-secondary-accent/30 shadow-inner">
+                  <LogIn className="w-5 h-5 text-secondary-accent" />
+                </span>
+                {t("joinGame")}
+              </h3>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">
+                  {t("yourName")}
+                </label>
+                <input
+                  type="text"
+                  placeholder={t("yourNamePh")}
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  className={`${inputBase} focus:border-secondary-accent focus:ring-secondary-accent`}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">
+                  {t("roomCode")}
+                </label>
+                <input
+                  type="text"
+                  placeholder="XXXXXX"
+                  maxLength={6}
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 text-2xl font-display font-extrabold text-center tracking-[0.4em] text-white outline-none focus:border-secondary-accent focus:ring-1 focus:ring-secondary-accent transition-all placeholder:text-text-muted/20 shadow-inner uppercase"
+                />
+              </div>
+
+              {profile.gamesPlayed > 0 && (
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
+                  <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2 mb-3">
+                    <Trophy className="w-3.5 h-3.5 text-warning-accent" /> {t("myStats")}
+                  </p>
+                  <div className="flex items-start gap-4">
+                    <PlayerAvatar
+                      seed={myId}
+                      name={profile.name || playerName || "You"}
+                      size={44}
+                      className="shrink-0 rounded-full ring-2 ring-white/10"
+                    />
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-3 flex-1">
+                      <div>
+                        <p className="font-display font-black text-lg text-white leading-none">
+                          {profile.gamesPlayed}
+                        </p>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                          {t("statGames")}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-display font-black text-lg text-warning-accent leading-none">
+                          {profile.gamesWon}
+                        </p>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                          {t("statWins")}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-display font-black text-lg text-orange-400 leading-none flex items-center gap-1">
+                          <Flame className="w-4 h-4" /> {Math.max(profile.bestStreak, 0)}
+                        </p>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                          {t("statBestStreak")}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-display font-black text-lg text-primary-accent leading-none flex items-center gap-1">
+                          <Timer className="w-4 h-4" /> {fmtFastest(profile.fastestBuzz)}
+                        </p>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                          {t("statFastest")}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-display font-black text-lg text-success-accent leading-none flex items-center gap-1">
+                          <Target className="w-4 h-4" /> {accuracy === null ? "—" : `${accuracy}%`}
+                        </p>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                          {t("statAccuracy")}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-display font-black text-lg text-secondary-accent leading-none flex items-center gap-1">
+                          <Coins className="w-4 h-4" /> {profile.totalPoints.toLocaleString()}
+                        </p>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1">
+                          {t("statTotalPoints")}
+                        </p>
+                      </div>
                     </div>
                   </div>
-
-                  {(localError || error) && (
-                    <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-danger-accent bg-danger-accent/10 border border-danger-accent/20 rounded-lg px-4 py-3 font-medium">
-                      {localError || error}
-                    </motion.p>
+                  {profile.favoriteCategory && (
+                    <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary-accent/10 border border-secondary-accent/20">
+                      <Tag className="w-3.5 h-3.5 text-secondary-accent shrink-0" />
+                      <p className="text-[11px] font-bold text-white truncate">
+                        {t("statBestCategory")}:{" "}
+                        <span className="text-secondary-accent">{profile.favoriteCategory}</span>
+                      </p>
+                    </div>
                   )}
-
-                  <button
-                    onClick={handleHost}
-                    disabled={loading || quizzes.length === 0}
-                    className="w-full flex items-center justify-center gap-2 py-4 premium-btn font-bold rounded-xl text-sm"
-                  >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
-                    Create Room & Host
-                  </button>
-                </motion.div>
+                </div>
               )}
 
-              {/* ── JOIN TAB ───────────────────────────────────────────── */}
-              {tab === 'join' && (
-                <motion.div
-                  key="join"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-6"
+              {(localError || error) && (
+                <motion.p
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-xs text-danger-accent bg-danger-accent/10 border border-danger-accent/20 rounded-lg px-4 py-3 font-medium"
                 >
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Your Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Mehar"
-                      value={playerName}
-                      onChange={(e) => setPlayerName(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white font-medium outline-none focus:border-secondary-accent focus:ring-1 focus:ring-secondary-accent transition-all placeholder:text-text-muted/40 shadow-inner"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">Room Code</label>
-                    <input
-                      type="text"
-                      placeholder="XXXXXX"
-                      maxLength={6}
-                      value={roomCode}
-                      onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                      onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 text-2xl font-display font-extrabold text-center tracking-[0.4em] text-white outline-none focus:border-secondary-accent focus:ring-1 focus:ring-secondary-accent transition-all placeholder:text-text-muted/20 shadow-inner uppercase"
-                    />
-                  </div>
-
-                  {(localError || error) && (
-                    <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-danger-accent bg-danger-accent/10 border border-danger-accent/20 rounded-lg px-4 py-3 font-medium">
-                      {localError || error}
-                    </motion.p>
-                  )}
-
-                  <button
-                    onClick={handleJoin}
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 py-4 bg-white hover:bg-gray-100 text-black font-bold rounded-xl text-sm transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(255,255,255,0.2)] disabled:opacity-50"
-                  >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-                    Join Room
-                  </button>
-                </motion.div>
+                  {localError || error}
+                </motion.p>
               )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
-      </div>
+
+              <button
+                onClick={handleJoin}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-white hover:bg-gray-100 text-black font-bold rounded-xl text-sm transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(255,255,255,0.2)] disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+                {t("joinRoomBtn")}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── How to Play modal ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {howToOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl"
+            onClick={() => setHowToOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className={`${modalPanel} max-w-md`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setHowToOpen(false)}
+                className={closeBtn}
+                aria-label={t("close")}
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <h3 className="text-3xl font-display font-black text-white leading-tight pr-8 flex items-center gap-3">
+                <span className="w-11 h-11 rounded-2xl bg-primary-accent/20 flex items-center justify-center border border-primary-accent/30 shadow-inner">
+                  <Zap className="w-5 h-5 text-primary-accent" />
+                </span>
+                {t("howToPlay")}
+              </h3>
+
+              <p className="text-sm text-text-muted -mt-2">{t("howToPlayIntro")}</p>
+
+              <div className="space-y-3">
+                {howToSteps.map((step, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-4 p-4 rounded-2xl bg-white/5 border border-white/5"
+                  >
+                    <div className="shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-primary-accent/20 to-secondary-accent/20 border border-white/10 flex items-center justify-center">
+                      <step.Icon className="w-5 h-5 text-primary-accent" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-white">
+                        <span className="text-text-muted font-black mr-2">{i + 1}.</span>
+                        {step.title}
+                      </p>
+                      <p className="text-xs text-text-muted mt-1 leading-relaxed">{step.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 };

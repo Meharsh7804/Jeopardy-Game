@@ -93,3 +93,62 @@ h1, h2, h3, h4, h5, h6 {
 .animate-pulse-glow {
   animation: pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Results screen confetti */
+@keyframes confetti-fall {
+  0% {
+    transform: translate3d(0, -12vh, 0) rotate(0deg);
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--confetti-x, 0px), 112vh, 0) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.confetti-piece {
+  position: absolute;
+  top: 0;
+  animation: confetti-fall linear infinite;
+  will-change: transform;
+}
+
+/* Settings-driven presentation */
+.font-large {
+  font-size: 18px;
+}
+
+html[data-anim="slow"] .animate-pulse-glow {
+  animation-duration: 6s;
+}
+
+html[data-anim="fast"] .animate-pulse-glow {
+  animation-duration: 1.5s;
+}
+
+html[data-anim="slow"] .animate-pulse {
+  animation-duration: 3s;
+}
+
+html[data-anim="fast"] .animate-pulse {
+  animation-duration: 0.75s;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.3rem;
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.08);
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #f8fafc;
+}

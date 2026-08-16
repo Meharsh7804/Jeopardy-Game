@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { QuizLibraryProvider } from './context/QuizLibraryContext';
+import { SettingsProvider } from './context/SettingsContext';
 import { RoomLobby } from './components/RoomLobby';
 import { HostRoom } from './components/HostRoom';
 import { PlayerRoom } from './components/PlayerRoom';
@@ -69,10 +70,12 @@ export default function App() {
   }
 
   return (
-    <QuizLibraryProvider>
-      <RoomProvider>
-        <AppContent />
-      </RoomProvider>
-    </QuizLibraryProvider>
+    <SettingsProvider>
+      <QuizLibraryProvider>
+        <RoomProvider>
+          <AppContent />
+        </RoomProvider>
+      </QuizLibraryProvider>
+    </SettingsProvider>
   );
 }

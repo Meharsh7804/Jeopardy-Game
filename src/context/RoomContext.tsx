@@ -14,6 +14,7 @@ import React, {
   useRef,
 } from "react";
 import { db } from "../firebase";
+import { COUNTDOWN_MS } from "../components/StartCountdown";
 import {
   ref,
   set,
@@ -23,6 +24,7 @@ import {
   remove,
   onDisconnect,
   serverTimestamp,
+  increment,
 } from "firebase/database";
 import type {
   Room,
@@ -107,11 +109,13 @@ interface RoomContextProps {
   revealAnswer: (answerText: string) => Promise<void>;
   closeQuestion: () => Promise<void>;
   endGame: () => Promise<void>;
+  resetGame: () => Promise<void>;
   kickPlayer: (playerId: string) => Promise<void>;
 
   // player actions
   joinRoom: (code: string, playerName: string) => Promise<void>;
   buzz: () => Promise<void>;
+  sendReaction: (emoji: string) => Promise<void>;
 
   // leave
   leaveRoom: () => Promise<void>;
@@ -186,6 +190,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           isHost: true,
           connected: true,
           lastSeen: Date.now(),
+          buzzCount: 0,
+          correctCount: 0,
+          wrongCount: 0,
+          streak: 0,
+          bestStreak: 0,
         };
 
         const newRoom: Room = {
@@ -219,9 +228,31 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   // ── Host: start game ──────────────────────────────────────────────────────
+  // Flips to "starting" so every client shows the 5-4-3-2-1 countdown from the
+  // same server-stamped instant, then flips to "board" shortly after the
+  // countdown window elapses. The flip delay is measured against the server
+  // timestamp (elapsed wall time around the write) plus a margin so every
+  // screen reliably sees "1" and "Let's Buzz!" before the board appears.
+  // The timer is tracked so leaving the room mid-countdown cancels it (the
+  // room must never be resurrected by a stale write).
+  const startTimerRef = useRef<number | null>(null);
   const startGame = useCallback(async () => {
     if (!roomCode) return;
-    await update(ref(db, `rooms/${roomCode}`), { phase: "board" as RoomPhase });
+    const localStart = Date.now();
+    await update(ref(db, `rooms/${roomCode}`), {
+      phase: "starting" as RoomPhase,
+      startAt: serverTimestamp() as unknown as number,
+    });
+    const elapsed = Date.now() - localStart;
+    const flipDelay = Math.max(1000, COUNTDOWN_MS - elapsed + 600);
+    if (startTimerRef.current) window.clearTimeout(startTimerRef.current);
+    startTimerRef.current = window.setTimeout(() => {
+      if (!roomCode) return;
+      update(ref(db, `rooms/${roomCode}`), {
+        phase: "board" as RoomPhase,
+        startAt: null,
+      }).catch(() => {});
+    }, flipDelay);
   }, [roomCode]);
 
   // ── Host: open a question ─────────────────────────────────────────────────
@@ -238,6 +269,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         text: question.text,
         type: question.type,
         revealAnswer: false,
+        // Server-clock start time so reaction times are comparable to the
+        // server-stamped buzz timestamps, regardless of any device clock.
+        // (Stored as the Firebase sentinel; resolves to an epoch-ms number.)
+        openedAt: serverTimestamp() as unknown as number,
       };
       if (question.mediaUrl) aq.mediaUrl = question.mediaUrl;
       if (question.isDailyDouble) aq.isDailyDouble = question.isDailyDouble;
@@ -246,6 +281,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       await update(ref(db, `rooms/${roomCode}`), {
         activeQuestion: aq,
         buzzes: null as any,
+        reactions: null as any,
         phase: "buzzing" as RoomPhase,
       });
     },
@@ -268,14 +304,34 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!buzzPlayerId) return;
 
       const value = room.activeQuestion?.value ?? 0;
-      const delta = correct ? value : -value;
       const currentScore = room.players[buzzPlayerId]?.score ?? 0;
       const playerName = room.players[buzzPlayerId]?.name ?? "Player";
+
+      // Reaction time: both timestamps are server-resolved, so the diff is
+      // accurate even if players' device clocks are skewed.
+      const openedAt = room.activeQuestion?.openedAt ?? 0;
+      const buzzTs = room.buzzes?.[buzzPlayerId] ?? 0;
+      const reactionMs =
+        openedAt > 0 && buzzTs > openedAt ? buzzTs - openedAt : undefined;
+
+      // First-buzz bonus: +10% (rounded) for a correct answer buzzed within
+      // the first second. Rolled into a single score change so "Undo Last"
+      // reverts the whole call in one step.
+      const firstBuzzBonus =
+        correct && reactionMs !== undefined && reactionMs <= 1000
+          ? Math.max(1, Math.round(value * 0.1))
+          : 0;
+
+      const delta = correct ? value + firstBuzzBonus : -value;
+      const bonusNote =
+        firstBuzzBonus > 0
+          ? ` (+$${firstBuzzBonus} ⚡ first-buzz bonus)`
+          : "";
       const { entry, newScore } = buildScoreChange(
         buzzPlayerId,
         currentScore,
         delta,
-        `${playerName} ${correct ? "answered correctly" : "answered incorrectly"} — "${room.activeQuestion?.categoryName ?? ""}" for $${value}`,
+        `${playerName} ${correct ? "answered correctly" : "answered incorrectly"} — "${room.activeQuestion?.categoryName ?? ""}" for $${value}${bonusNote}`,
         room.activeQuestion?.questionId,
       );
 
@@ -283,6 +339,28 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         [`players/${buzzPlayerId}/score`]: newScore,
         [`scoreHistory/${entry.id}`]: entry,
       };
+
+      // Reflex + streak stats
+      const prevStreak = room.players[buzzPlayerId]?.streak ?? 0;
+      if (correct) {
+        updates[`players/${buzzPlayerId}/correctCount`] = increment(1);
+        const newStreak = prevStreak + 1;
+        updates[`players/${buzzPlayerId}/streak`] = newStreak;
+        const prevBest = room.players[buzzPlayerId]?.bestStreak ?? 0;
+        if (newStreak > prevBest) {
+          updates[`players/${buzzPlayerId}/bestStreak`] = newStreak;
+        }
+      } else {
+        updates[`players/${buzzPlayerId}/wrongCount`] = increment(1);
+        updates[`players/${buzzPlayerId}/streak`] = 0;
+      }
+      const prevFastest = room.players[buzzPlayerId]?.fastestBuzz;
+      if (
+        reactionMs !== undefined &&
+        (prevFastest === undefined || prevFastest === null || reactionMs < prevFastest)
+      ) {
+        updates[`players/${buzzPlayerId}/fastestBuzz`] = reactionMs;
+      }
 
       if (correct && room.activeQuestion) {
         updates[`completedQuestions/${room.activeQuestion.questionId}`] = true;
@@ -412,6 +490,29 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     await update(ref(db, `rooms/${roomCode}`), { phase: "ended" as RoomPhase });
   }, [roomCode]);
 
+  // ── Host: play again (rematch in the same room) ────────────────────────────
+  // Wipes scores, per-player stats, completed tiles, buzzes and score history
+  // while keeping the same room, quiz and players — everyone lands back on
+  // the board ready for a fresh game.
+  const resetGame = useCallback(async () => {
+    if (!roomCode || !room || room.hostId !== myId) return;
+    const updates: Record<string, any> = {
+      phase: "board" as RoomPhase,
+      activeQuestion: null,
+      buzzes: null,
+      completedQuestions: null,
+      scoreHistory: null,
+    };
+    for (const pid of Object.keys(room.players)) {
+      updates[`players/${pid}/score`] = 0;
+      updates[`players/${pid}/buzzCount`] = 0;
+      updates[`players/${pid}/correctCount`] = 0;
+      updates[`players/${pid}/wrongCount`] = 0;
+      updates[`players/${pid}/fastestBuzz`] = null;
+    }
+    await update(ref(db, `rooms/${roomCode}`), updates);
+  }, [roomCode, room, myId]);
+
   // ── Host: kick a player ────────────────────────────────────────────────────
   // Fix #6: removes the player from players map and clears any pending buzz.
   const kickPlayer = useCallback(
@@ -454,6 +555,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           isHost: false,
           connected: true,
           lastSeen: Date.now(),
+          buzzCount: existingPlayer?.buzzCount ?? 0,
+          correctCount: existingPlayer?.correctCount ?? 0,
+          wrongCount: existingPlayer?.wrongCount ?? 0,
+          fastestBuzz: existingPlayer?.fastestBuzz ?? null,
+          streak: existingPlayer?.streak ?? 0,
+          bestStreak: existingPlayer?.bestStreak ?? 0,
         };
 
         const connectedRef = ref(db, `rooms/${upperCode}/players/${myId}/connected`);
@@ -530,11 +637,33 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
 
     await update(ref(db, `rooms/${roomCode}`), {
       [`buzzes/${myId}`]: serverTimestamp(),
+      [`players/${myId}/buzzCount`]: increment(1),
     });
   }, [roomCode, room, myId]);
 
+  // ── Player: send an emoji reaction ─────────────────────────────────────────
+  // Each reaction gets a unique id so every client can animate it exactly once
+  // (overlay diffs on the id). Reactions are cleared automatically whenever a
+  // new question opens.
+  const sendReaction = useCallback(
+    async (emoji: string) => {
+      if (!roomCode || !room) return;
+      if (room.phase !== "buzzing" && room.phase !== "answer") return;
+      await update(ref(db, `rooms/${roomCode}/reactions/${myId}`), {
+        emoji,
+        id: genId(8),
+        ts: Date.now(),
+      });
+    },
+    [roomCode, room, myId],
+  );
+
   // ── Leave / cleanup ───────────────────────────────────────────────────────
   const leaveRoom = useCallback(async () => {
+    if (startTimerRef.current) {
+      window.clearTimeout(startTimerRef.current);
+      startTimerRef.current = null;
+    }
     if (roomCode) {
       if (room?.hostId === myId) {
         await remove(ref(db, `rooms/${roomCode}`));
@@ -569,9 +698,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         revealAnswer,
         closeQuestion,
         endGame,
+        resetGame,
         kickPlayer,
         joinRoom,
         buzz,
+        sendReaction,
         leaveRoom,
       }}
     >
