@@ -9,11 +9,17 @@ import {
   Target,
   RotateCcw,
   LogOut,
+  Flame,
+  Medal,
+  Sparkles,
 } from "lucide-react";
 import type { RoomPlayer } from "../types/jeopardy";
 import { PlayerAvatar } from "../utils/playerAvatar";
 import { useSettings } from "../context/SettingsContext";
 import { ConfettiBurst } from "./ConfettiBurst";
+import { ACHIEVEMENT_ICONS } from "../utils/achievements";
+import { achievementKey } from "../utils/profile";
+import type { AchievementId } from "../utils/profile";
 
 const fmtReaction = (ms?: number | null) =>
   ms === undefined || ms === null ? "—" : `${(ms / 1000).toFixed(2)}s`;
@@ -30,6 +36,18 @@ interface ResultsScreenProps {
   onExit: () => void;
   exitLabel?: string;
   waitingNote?: string; // shown to non-hosts while they wait for a rematch
+  /** Achievements the current player unlocked during/at the end of this game. */
+  myAwards?: AchievementId[];
+  /** Encouragement messages for locked achievements ("next time buzz under 3s…"). */
+  myHints?: { key: string; params?: Record<string, string | number> }[];
+}
+
+interface FunAward {
+  Icon: typeof Trophy;
+  label: string;
+  value: string;
+  playerName: string;
+  accent: string;
 }
 
 export const ResultsScreen: React.FC<ResultsScreenProps> = ({
@@ -39,10 +57,48 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   onExit,
   exitLabel = "Exit",
   waitingNote,
+  myAwards = [],
+  myHints = [],
 }) => {
   const { t } = useSettings();
   const podiumOrder = [players[1], players[0], players[2]].filter(Boolean) as RoomPlayer[];
   const rest = players.slice(3);
+
+  // ── Fun awards: fastest buzzer, most correct, longest streak ───────────────
+  const funAwards: FunAward[] = [];
+  const fastest = players.filter((p) => p.fastestBuzz != null);
+  if (fastest.length > 1) {
+    const best = fastest.reduce((a, b) => ((b.fastestBuzz as number) < (a.fastestBuzz as number) ? b : a));
+    funAwards.push({
+      Icon: Zap,
+      label: t("awardFastest"),
+      value: fmtReaction(best.fastestBuzz),
+      playerName: best.name,
+      accent: "text-primary-accent",
+    });
+  }
+  const mostCorrect = players.reduce((a, b) => ((b.correctCount ?? 0) > (a.correctCount ?? 0) ? b : a));
+  if ((mostCorrect.correctCount ?? 0) > 0) {
+    funAwards.push({
+      Icon: Target,
+      label: t("awardMostCorrect"),
+      value: `${mostCorrect.correctCount}`,
+      playerName: mostCorrect.name,
+      accent: "text-success-accent",
+    });
+  }
+  const streak = players.reduce((a, b) => ((b.bestStreak ?? 0) > (a.bestStreak ?? 0) ? b : a));
+  if ((streak.bestStreak ?? 0) > 1) {
+    funAwards.push({
+      Icon: Flame,
+      label: t("awardStreak"),
+      value: `${streak.bestStreak}×`,
+      playerName: streak.name,
+      accent: "text-orange-400",
+    });
+  }
+
+  const showAwards = funAwards.length > 0 || myAwards.length > 0 || myHints.length > 0;
 
   const podiumStyle: Record<
     number,
@@ -229,6 +285,96 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           })}
         </div>
       </motion.div>
+
+      {showAwards && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+          className="w-full max-w-2xl glass-panel-heavy p-6 rounded-3xl border border-white/10 shadow-xl space-y-5"
+        >
+          <p className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center justify-center gap-2">
+            <Medal className="w-4 h-4 text-warning-accent" /> {t("awardsTitle")}
+            <span className="text-text-muted/60 font-semibold normal-case">— {t("awardsSub")}</span>
+          </p>
+
+          {funAwards.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {funAwards.map((a) => (
+                <div
+                  key={a.label}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/5 border border-white/5"
+                >
+                  <span className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                    <a.Icon className={`w-4 h-4 ${a.accent}`} />
+                  </span>
+                  <span className="min-w-0 text-left">
+                    <span className="block text-[9px] font-black uppercase tracking-widest text-text-muted">
+                      {a.label}
+                    </span>
+                    <span className="block font-display font-black text-sm text-white truncate">
+                      {a.playerName}
+                    </span>
+                    <span className="block text-[11px] font-bold text-text-muted">{a.value}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {myAwards.length > 0 && (
+            <div className="space-y-2">
+              {myAwards.map((id) => {
+                const Icon = ACHIEVEMENT_ICONS[id];
+                const nameKey = achievementKey(id);
+                return (
+                  <motion.div
+                    key={id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.7 + 0.12 * myAwards.indexOf(id) }}
+                    className={`flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border ${
+                      id === "collector"
+                        ? "bg-warning-accent/15 border-warning-accent/50 shadow-[0_0_25px_rgba(245,158,11,0.15)]"
+                        : "bg-white/5 border-white/10"
+                    }`}
+                  >
+                    <span className="p-2.5 rounded-xl bg-gradient-to-br from-warning-accent to-amber-600 text-black shadow-lg">
+                      <Icon className="w-5 h-5" />
+                    </span>
+                    <span className="min-w-0 text-left">
+                      <span className="block font-display font-black text-sm text-white leading-tight">
+                        {t(nameKey)}
+                      </span>
+                      <span className="block text-[11px] text-text-muted leading-tight">
+                        {t(`${nameKey}Desc`)}
+                      </span>
+                    </span>
+                    <span className="ml-auto flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-warning-accent shrink-0">
+                      <Sparkles className="w-3 h-3" /> {t("achievementUnlocked")}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+
+          {myHints.length > 0 && (
+            <div className="pt-1 border-t border-white/10">
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2 mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-secondary-accent" /> {t("keepGoing")}
+              </p>
+              <div className="space-y-1.5">
+                {myHints.map((h, i) => (
+                  <p key={i} className="text-xs font-medium text-text-muted leading-relaxed">
+                    {t(h.key, h.params)}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

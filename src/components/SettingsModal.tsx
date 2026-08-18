@@ -1,6 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Volume2, VolumeX, Type, Gauge, Languages, Music, Check } from "lucide-react";
+import { X, Volume2, VolumeX, Type, Gauge, Languages, Music, Check, Timer } from "lucide-react";
 import { useSettings, type AnimationSpeed } from "../context/SettingsContext";
 import { LANGS } from "../i18n";
 import { soundManager, type SoundTheme } from "../utils/sound";
@@ -97,6 +97,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
                   {settings.isSoundMuted ? "0" : Math.round(settings.soundVolume * 100)}
                 </span>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
+                <Timer className="w-3.5 h-3.5" /> {t("questionTimer")}
+              </p>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min={5}
+                  max={60}
+                  step={5}
+                  value={settings.defaultTimer}
+                  onChange={(e) => update({ defaultTimer: Number(e.target.value) })}
+                  className="flex-1 accent-primary-accent"
+                  aria-label={t("questionTimer")}
+                />
+                <span className="text-sm font-bold text-white w-10 text-right">
+                  {settings.defaultTimer}s
+                </span>
+              </div>
+              <p className="text-[11px] text-text-muted">{t("questionTimerSub")}</p>
             </div>
 
             <button

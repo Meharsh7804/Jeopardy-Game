@@ -27,6 +27,7 @@ import { SettingsModal } from "./SettingsModal";
 import { StartCountdown } from "./StartCountdown";
 import { useSettings } from "../context/SettingsContext";
 import { QrJoinModal } from "./QrJoinModal";
+import { QuestionTimer } from "./QuestionTimer";
 
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
@@ -66,7 +67,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     leaveRoom,
   } = useRoom();
   const { quizzes } = useQuizLibrary();
-  const { t } = useSettings();
+  const { t, settings } = useSettings();
 
   const [copied, setCopied] = useState(false);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -93,9 +94,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     setQuiz(found);
   }, [room?.quizId, quizzes]);
 
-  // Game-show fanfare when the game ends.
+  // Theme music on game start ("Let's Buzz!" board landing) and victory
+  // fanfare when the game ends. Phase-transition guarded so remounts and
+  // reconnects never replay them.
+  const prevPhaseRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (room?.phase === "ended") soundManager.playWinner();
+    if (!room) return;
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = room.phase;
+    if (prev === undefined || prev === room.phase) return;
+    if (room.phase === "board") soundManager.playIntro();
+    if (room.phase === "ended") soundManager.playWinner();
   }, [room?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The host hears every new buzz land, so the "buzzed in" moment is audible.
@@ -181,7 +190,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
   const handleOpenQuestion = async (q: Question, catName: string) => {
     soundManager.playReveal();
-    await openQuestion(q, catName);
+    await openQuestion(q, catName, settings.defaultTimer);
   };
 
   const categoryModalData = categoryModalId
@@ -572,10 +581,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     <span className="font-display font-black text-warning-accent text-3xl drop-shadow-md">
                       ${room.activeQuestion.value}
                     </span>
+                    <QuestionTimer
+                      seconds={room.activeQuestion.timer ?? settings.defaultTimer}
+                      openedAt={room.activeQuestion.openedAt}
+                    />
                   </div>
 
-                  {room.activeQuestion.mediaUrl &&
-                    room.activeQuestion.type !== "text" && (
+                  {room.activeQuestion.mediaUrl && (
                     <div className="relative rounded-3xl overflow-hidden border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)] mx-auto w-fit max-h-72 bg-black">
                       <img
                         src={room.activeQuestion.mediaUrl}

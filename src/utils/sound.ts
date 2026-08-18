@@ -15,9 +15,18 @@ interface ThemeCfg {
   correct: { notes: number[]; type: OscillatorType; step: number; dur: number };
   wrong: { type: OscillatorType; freqs: number[]; startFreq: number; endFreq: number; dur: number };
   tick: { type: OscillatorType; freq: number; dur: number };
+  urgentTick: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
   reveal: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
   pop: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
   winner: { chords: number[][]; type: OscillatorType; lastDur: number };
+  intro: {
+    notes: number[];
+    finalChord: number[];
+    type: OscillatorType;
+    step: number;
+    dur: number;
+    finalDur: number;
+  };
 }
 
 // Every sound is synthesized live with Web Audio (no assets). Each theme
@@ -45,6 +54,7 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
     },
     wrong: { type: "triangle", freqs: [146.83, 110.0], startFreq: 146.83, endFreq: 75.0, dur: 0.6 },
     tick: { type: "sine", freq: 1000, dur: 0.03 },
+    urgentTick: { type: "square", startFreq: 1100, endFreq: 650, dur: 0.09 },
     reveal: { type: "triangle", startFreq: 293.66, endFreq: 880.0, dur: 0.4 },
     pop: { type: "sine", startFreq: 520, endFreq: 980, dur: 0.12 },
     winner: {
@@ -53,9 +63,18 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
         [349.23, 440.0, 523.25, 698.46], // F major
         [392.0, 493.88, 587.33, 783.99], // G major
         [523.25, 659.25, 783.99, 1046.5], // C major high
+        [659.25, 830.61, 987.77, 1318.51], // E major cap
       ],
       type: "triangle",
-      lastDur: 0.8,
+      lastDur: 1.1,
+    },
+    intro: {
+      notes: [392.0, 523.25, 659.25, 783.99], // G4 C5 E5 G5 fanfare run
+      finalChord: [523.25, 659.25, 783.99, 1046.5], // C major chord
+      type: "sine",
+      step: 0.09,
+      dur: 0.12,
+      finalDur: 0.9,
     },
   },
   arcade: {
@@ -78,6 +97,7 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
     },
     wrong: { type: "square", freqs: [220, 165], startFreq: 220, endFreq: 60, dur: 0.4 },
     tick: { type: "square", freq: 1500, dur: 0.025 },
+    urgentTick: { type: "square", startFreq: 1600, endFreq: 700, dur: 0.06 },
     reveal: { type: "square", startFreq: 400, endFreq: 1200, dur: 0.25 },
     pop: { type: "square", startFreq: 660, endFreq: 1320, dur: 0.09 },
     winner: {
@@ -86,9 +106,18 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
         [698.46, 880.0, 1046.5, 1396.91], // F5 major
         [783.99, 987.77, 1174.66, 1567.98], // G5 major
         [1046.5, 1318.51, 1567.98, 2093.0], // C6 major high
+        [1318.51, 1661.22, 1975.53, 2637.02], // E6 major cap
       ],
       type: "square",
-      lastDur: 0.5,
+      lastDur: 0.75,
+    },
+    intro: {
+      notes: [523.25, 783.99, 1046.5, 1567.98], // C5 G5 C6 G6 arcade run
+      finalChord: [1046.5, 1318.51, 1567.98, 2093.0], // C6 major chord
+      type: "square",
+      step: 0.07,
+      dur: 0.1,
+      finalDur: 0.7,
     },
   },
   retro: {
@@ -111,6 +140,7 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
     },
     wrong: { type: "sawtooth", freqs: [98, 87.31], startFreq: 98, endFreq: 62, dur: 0.7 },
     tick: { type: "sine", freq: 880, dur: 0.03 },
+    urgentTick: { type: "sawtooth", startFreq: 900, endFreq: 500, dur: 0.1 },
     reveal: { type: "sawtooth", startFreq: 262, endFreq: 880, dur: 0.5 },
     pop: { type: "triangle", startFreq: 440, endFreq: 880, dur: 0.12 },
     winner: {
@@ -119,9 +149,18 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
         [349.23, 440.0, 523.25, 698.46], // F major
         [392.0, 493.88, 587.33, 783.99], // G major
         [523.25, 659.25, 783.99, 1046.5], // C major high
+        [659.25, 830.61, 987.77, 1318.51], // E major cap
       ],
       type: "sawtooth",
-      lastDur: 1.0,
+      lastDur: 1.3,
+    },
+    intro: {
+      notes: [329.63, 392.0, 493.88, 587.33], // E4 G4 B4 D5 brass run
+      finalChord: [392.0, 493.88, 587.33, 783.99], // G major chord
+      type: "sawtooth",
+      step: 0.12,
+      dur: 0.15,
+      finalDur: 1.1,
     },
   },
 };
@@ -259,6 +298,58 @@ class SoundManager {
     const t = THEMES[this.theme].tick;
     // High-pitched short woodblock tick
     this.playOscillator(t.type, [t.freq], t.dur);
+  }
+
+  playTimerUrgent() {
+    const t = THEMES[this.theme].urgentTick;
+    // Faster, descending warning blip for the last seconds of a question timer
+    this.playOscillator(
+      t.type,
+      [t.startFreq],
+      t.dur,
+      { startFreq: t.startFreq, endFreq: t.endFreq, type: 'linear' },
+    );
+  }
+
+  playIntro() {
+    this.initCtx();
+    if (!this.ctx || this.muted || this.volume <= 0) return;
+
+    const i = THEMES[this.theme].intro;
+    const now = this.ctx.currentTime;
+    // Quick ascending fanfare run...
+    i.notes.forEach((freq, idx) => {
+      const noteTime = now + idx * i.step;
+      const gainNode = this.ctx!.createGain();
+      gainNode.gain.setValueAtTime(0, noteTime);
+      gainNode.gain.linearRampToValueAtTime(this.volume * 0.2, noteTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, noteTime + i.dur);
+      gainNode.connect(this.ctx!.destination);
+
+      const osc = this.ctx!.createOscillator();
+      osc.type = i.type;
+      osc.frequency.setValueAtTime(freq, noteTime);
+      osc.connect(gainNode);
+      osc.start(noteTime);
+      osc.stop(noteTime + i.dur);
+    });
+
+    // ...landing on a big sustained opening chord.
+    const chordTime = now + i.notes.length * i.step;
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.setValueAtTime(0, chordTime);
+    gainNode.gain.linearRampToValueAtTime(this.volume * 0.22, chordTime + 0.03);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, chordTime + i.finalDur);
+    gainNode.connect(this.ctx.destination);
+
+    i.finalChord.forEach((freq) => {
+      const osc = this.ctx!.createOscillator();
+      osc.type = i.type;
+      osc.frequency.setValueAtTime(freq, chordTime);
+      osc.connect(gainNode);
+      osc.start(chordTime);
+      osc.stop(chordTime + i.finalDur);
+    });
   }
 
   playReveal() {

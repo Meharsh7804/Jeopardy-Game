@@ -18,6 +18,7 @@ export interface Settings {
   largeFontMode: boolean;
   animationSpeed: AnimationSpeed;
   language: Lang;
+  defaultTimer: number; // seconds per question (countdown + urgency ticking)
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   largeFontMode: false,
   animationSpeed: "normal",
   language: "en",
+  defaultTimer: 15,
 };
 
 const STORAGE_KEY = "jeopardy_settings";

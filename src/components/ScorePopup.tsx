@@ -11,9 +11,9 @@ interface ScorePopupProps {
  * Floating +$X / −$X popup shown next to a player's row whenever a new score
  * change for that player lands. Mount inside a `relative` row container; each
  * score-history entry animates exactly once (diffed by entry id), so remounts
- * and reconnects never replay old popups. Popups stack vertically instead of
- * overlapping, emerge from above the row, and the whole enter-hold-exit cycle
- * stays under one second so nothing lingers into the next question.
+ * and reconnects never replay old popups. Only the latest change is ever shown —
+ * a new change replaces whatever is on screen — and the whole enter-hold-exit
+ * cycle stays around a second so nothing lingers into the next question.
  */
 export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => {
   const seen = useRef<Set<string>>(new Set());
@@ -24,10 +24,11 @@ export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => 
     Object.values(entries).forEach((e) => {
       if (!e || e.teamId !== playerId || seen.current.has(e.id)) return;
       seen.current.add(e.id);
-      setActive((prev) => [...prev.slice(-2), e]);
+      // Replace whatever is showing — only the latest change is displayed.
+      setActive([e]);
       window.setTimeout(() => {
         setActive((prev) => prev.filter((x) => x.id !== e.id));
-      }, 750);
+      }, 1000);
     });
   }, [entries, playerId]);
 

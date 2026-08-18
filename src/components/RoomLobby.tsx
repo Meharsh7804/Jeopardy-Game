@@ -23,14 +23,15 @@ import {
   Tag,
   ChevronDown,
   Award,
-  Medal,
   CalendarCheck,
   History,
+  Shield,
+  Sparkles,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { PlayerAvatar } from "../utils/playerAvatar";
 import { SettingsModal } from "./SettingsModal";
 import { HeroQuizArena } from "./HeroQuizArena";
+import { ACHIEVEMENT_ICONS } from "../utils/achievements";
 import {
   loadProfile,
   saveProfileName,
@@ -40,8 +41,9 @@ import {
   xpOf,
   levelInfo,
   ACHIEVEMENT_IDS,
+  nextAchievementGoal,
+  achievementHint,
 } from "../utils/profile";
-import type { AchievementId } from "../utils/profile";
 
 interface RoomLobbyProps {
   onHostEntersRoom: () => void;
@@ -83,17 +85,6 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   const totalAnswered = profile.totalCorrect + profile.totalWrong;
   const accuracy =
     totalAnswered > 0 ? Math.round((profile.totalCorrect / totalAnswered) * 100) : null;
-
-  const ACHIEVEMENT_ICONS: Record<AchievementId, LucideIcon> = {
-    firstWin: Trophy,
-    onFire: Flame,
-    sharpshooter: Target,
-    regular: CalendarCheck,
-    lightning: Zap,
-    highRoller: Coins,
-    flawless: Award,
-    centurion: Medal,
-  };
 
   const selectedQuiz = quizzes.find((q) => q.id === selectedQuizId) ?? quizzes[0];
 
@@ -331,13 +322,20 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             </div>
 
             <div>
-              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center justify-between">
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
                 <span className="flex items-center gap-2">
                   <Award className="w-3.5 h-3.5 text-warning-accent" /> {t("achievementsTitle")}
                 </span>
-                <span className="text-text-muted/80">{t("achievementsCount", { unlocked: unlockedCount, total: ACHIEVEMENT_IDS.length })}</span>
+                {!!profile.achievements.collector && (
+                  <span className="flex items-center gap-1 text-[9px] font-black text-warning-accent bg-warning-accent/10 border border-warning-accent/30 rounded-full px-2 py-0.5">
+                    <Shield className="w-3 h-3" /> {t("badgeChip")}
+                  </span>
+                )}
+                <span className="ml-auto text-text-muted/80">
+                  {t("achievementsCount", { unlocked: unlockedCount, total: ACHIEVEMENT_IDS.length })}
+                </span>
               </p>
-              <div className="grid grid-cols-8 gap-2 mt-3">
+              <div className="grid grid-cols-9 gap-2 mt-3">
                 {ACHIEVEMENT_IDS.map((id) => {
                   const Icon = ACHIEVEMENT_ICONS[id];
                   const unlocked = !!profile.achievements[id];
@@ -356,6 +354,18 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                   );
                 })}
               </div>
+              {(() => {
+                const goal = nextAchievementGoal(profile);
+                if (!goal) return null;
+                const hint = achievementHint(goal, profile);
+                return (
+                  <p className="text-[11px] font-medium text-text-muted/80 mt-2.5 flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3 text-secondary-accent shrink-0" />
+                    <span className="shrink-0">{t("nextGoal")}:</span>
+                    <span className="truncate">{t(hint.key, hint.params)}</span>
+                  </p>
+                );
+              })()}
             </div>
           </div>
 

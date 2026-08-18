@@ -130,7 +130,8 @@ export type AchievementId =
   | "lightning"
   | "highRoller"
   | "flawless"
-  | "centurion";
+  | "centurion"
+  | "collector";
 
 export const ACHIEVEMENT_IDS: AchievementId[] = [
   "firstWin",
@@ -141,7 +142,15 @@ export const ACHIEVEMENT_IDS: AchievementId[] = [
   "highRoller",
   "flawless",
   "centurion",
+  "collector",
 ];
+
+/** i18n key for an achievement's display name (e.g. "firstWin" → "achFirstWin"). */
+export const achievementKey = (id: AchievementId): string =>
+  `ach${id[0].toUpperCase()}${id.slice(1)}`;
+
+/** Achievements that can unlock while a game is still running. */
+export const LIVE_ACHIEVEMENT_IDS: AchievementId[] = ["onFire", "lightning"];
 
 const checkAchievements = (p: PlayerProfile, history: MatchRecord[]): Record<string, number> => {
   const unlocked: Record<string, number> = { ...p.achievements };
@@ -161,8 +170,94 @@ const checkAchievements = (p: PlayerProfile, history: MatchRecord[]): Record<str
     history.some((m) => m.won && m.wrong === 0 && m.correct >= 3),
   );
   grant("centurion", history.some((m) => m.myScore >= 1000));
+  // Meta badge: earned once 4 other achievements are unlocked.
+  const othersUnlocked = Object.keys(unlocked).filter((id) => id !== "collector").length;
+  grant("collector", othersUnlocked >= 4);
 
   return unlocked;
+};
+
+/**
+ * Re-evaluates all achievements against the profile and returns the ids that
+ * are newly unlocked (never duplicates). Used live mid-game and at game end.
+ */
+export const evaluateAchievements = (p: PlayerProfile): { profile: PlayerProfile; newly: AchievementId[] } => {
+  const before = new Set(Object.keys(p.achievements));
+  const history = loadMatchHistory();
+  const achievements = checkAchievements(p, history);
+  const newly = ACHIEVEMENT_IDS.filter((id) => achievements[id] && !before.has(id));
+  return { profile: { ...p, achievements }, newly };
+};
+
+/**
+ * Live mid-game check: merges the player's in-game stats into the stored
+ * profile, unlocks whatever is now earned (e.g. "On Fire" for a 3-streak,
+ * "Lightning" for a sub-3s buzz), persists once, and returns the new ids.
+ */
+export const checkLiveAchievements = (opts: {
+  bestStreak?: number;
+  fastestBuzzMs?: number;
+}): AchievementId[] => {
+  const p = loadProfile();
+  if (opts.bestStreak != null) p.bestStreak = Math.max(p.bestStreak, opts.bestStreak);
+  if (opts.fastestBuzzMs != null) {
+    p.fastestBuzz =
+      p.fastestBuzz === null ? opts.fastestBuzzMs : Math.min(p.fastestBuzz, opts.fastestBuzzMs);
+  }
+  const { profile, newly } = evaluateAchievements(p);
+  if (newly.length > 0) persist(profile);
+  return newly;
+};
+
+// ─── Encouragement: progress & hints for locked achievements ─────────────────
+
+/** 0..1 progress toward each achievement (unlocked ones read 1). */
+export const achievementProgress = (p: PlayerProfile): Record<AchievementId, number> => {
+  const othersUnlocked = ACHIEVEMENT_IDS.filter((id) => id !== "collector" && p.achievements[id]).length;
+  const history = loadMatchHistory();
+  return {
+    firstWin: Math.min(1, p.gamesWon),
+    onFire: Math.min(1, p.bestStreak / 3),
+    sharpshooter: Math.min(1, p.totalCorrect / 25),
+    regular: Math.min(1, p.gamesPlayed / 10),
+    lightning: p.fastestBuzz !== null ? Math.min(1, 3000 / (p.fastestBuzz as number)) : 0,
+    highRoller: Math.min(1, p.totalPoints / 5000),
+    flawless: history.some((m) => m.won && m.wrong === 0 && m.correct >= 3) ? 1 : 0,
+    centurion: history.some((m) => m.myScore >= 1000) ? 1 : 0,
+    collector: Math.min(1, othersUnlocked / 4),
+  };
+};
+
+/** The locked achievement the player is closest to unlocking (null if all done). */
+export const nextAchievementGoal = (p: PlayerProfile): AchievementId | null => {
+  const progress = achievementProgress(p);
+  let best: AchievementId | null = null;
+  for (const id of ACHIEVEMENT_IDS) {
+    if (p.achievements[id]) continue;
+    if (best === null || progress[id] > progress[best]) best = id;
+  }
+  return best;
+};
+
+/** Motivational hint text for a locked achievement (i18n key + optional params). */
+export const achievementHint = (
+  id: AchievementId,
+  p: PlayerProfile,
+): { key: string; params?: Record<string, number> } => {
+  const othersUnlocked = ACHIEVEMENT_IDS.filter((a) => a !== "collector" && p.achievements[a]).length;
+  const key = `achHint${id[0].toUpperCase()}${id.slice(1)}`;
+  switch (id) {
+    case "sharpshooter":
+      return { key, params: { n: Math.max(0, 25 - p.totalCorrect) } };
+    case "regular":
+      return { key, params: { n: Math.max(0, 10 - p.gamesPlayed) } };
+    case "highRoller":
+      return { key, params: { n: Math.max(0, 5000 - p.totalPoints) } };
+    case "collector":
+      return { key, params: { n: Math.max(0, 4 - othersUnlocked) } };
+    default:
+      return { key };
+  }
 };
 
 /**
@@ -262,7 +357,8 @@ export const recordGameEnd = (room: Room, myId: string): PlayerProfile => {
     // storage unavailable — seasons stay in-memory only
   }
 
-  p.achievements = checkAchievements(p, history);
+  const { profile: evaluated } = evaluateAchievements(p);
+  p.achievements = evaluated.achievements;
   persist(p);
   return p;
 };

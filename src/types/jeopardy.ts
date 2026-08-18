@@ -73,6 +73,7 @@ export interface ActiveQuestion {
   isDailyDouble?: boolean;
   revealAnswer: boolean;
   openedAt?: number; // server-resolved timestamp of when buzzing opened — reaction time = buzz - openedAt
+  timer?: number; // seconds players have to buzz, before the urgency phase kicks in
 }
 
 export interface RoomReaction {

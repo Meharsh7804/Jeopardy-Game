@@ -45,7 +45,7 @@ const loadLocalQuizzes = (): Quiz[] => {
     const saved = localStorage.getItem(QUIZZES_KEY);
     if (saved) {
       const parsed: Quiz[] = JSON.parse(saved);
-      if (parsed.length > 0) return parsed;
+      if (parsed.length > 0) return stripBlobMedia(parsed);
     }
   } catch { /* ignore */ }
   return [DEFAULT_QUIZ];
@@ -62,7 +62,7 @@ interface QuizLibraryContextProps {
   settings: GameSettings;
   /** true once we're synced with the shared Firebase library (vs. showing local cache only) */
   isSynced: boolean;
-  saveQuiz: (quiz: Quiz) => void;
+  saveQuiz: (quiz: Quiz) => Promise<void>;
   deleteQuiz: (id: string) => void;
   updateSettings: (partial: Partial<GameSettings>) => void;
   /** Produces a JSON string of a single quiz, for exporting/sharing outside Firebase (e.g. across projects). */
@@ -70,6 +70,24 @@ interface QuizLibraryContextProps {
   /** Imports a quiz from an exported JSON string, saving it into the (shared) library under a fresh id. */
   importQuiz: (json: string) => Quiz;
 }
+
+/**
+ * Recursively strips `blob:` media URLs — an old upload method stored
+ * session-only object URLs that can never load on another device. Once
+ * cleared, the host can re-upload those images as base64 data URLs.
+ */
+const stripBlobMedia = (value: any): any => {
+  if (Array.isArray(value)) return value.map(stripBlobMedia);
+  if (value && typeof value === "object") {
+    const clean: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (k === "mediaUrl" && typeof v === "string" && v.startsWith("blob:")) continue;
+      clean[k] = stripBlobMedia(v);
+    }
+    return clean;
+  }
+  return value;
+};
 
 const QuizLibraryContext = createContext<QuizLibraryContextProps | undefined>(undefined);
 
@@ -98,7 +116,7 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
       (snap) => {
         if (snap.exists()) {
           const val = snap.val() as Record<string, Quiz>;
-          const list = Object.values(val).sort((a, b) => b.createdAt - a.createdAt);
+          const list: Quiz[] = Object.values(stripBlobMedia(val) as Record<string, Quiz>).sort((a, b) => b.createdAt - a.createdAt);
           setQuizzes(list);
           persistLocalCache(list);
         } else if (!seededRef.current) {
@@ -121,7 +139,7 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return () => unsub();
   }, []);
 
-  const saveQuiz = useCallback((quiz: Quiz) => {
+  const saveQuiz = useCallback((quiz: Quiz): Promise<void> => {
     // Optimistic local update so the editor feels instant even before the
     // Firebase round-trip / listener callback comes back.
     setQuizzes((prev) => {
@@ -131,13 +149,14 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return next;
     });
 
-    if (isFirebaseConfigValid()) {
-      set(ref(db, `quizLibrary/${quiz.id}`), sanitize(quiz)).catch(() => {
-        // Firebase write failed (offline etc.) — the quiz still lives in the
-        // local cache above and will sync next time saveQuiz runs or the
-        // listener reconnects.
-      });
-    }
+    if (!isFirebaseConfigValid()) return Promise.resolve();
+
+    // Reject on failure so callers can surface why a save didn't stick
+    // (e.g. a data URL too large for the database) instead of failing silently.
+    return set(ref(db, `quizLibrary/${quiz.id}`), sanitize(quiz)).catch((err) => {
+      console.error("Failed to save quiz to Firebase:", err);
+      throw err;
+    });
   }, []);
 
   const deleteQuiz = useCallback((id: string) => {
@@ -178,7 +197,7 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
       id: `quiz_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       createdAt: Date.now(),
     };
-    saveQuiz(imported);
+    saveQuiz(imported).catch(() => {});
     return imported;
   }, [saveQuiz]);
 

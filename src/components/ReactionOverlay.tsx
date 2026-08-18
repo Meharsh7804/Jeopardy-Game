@@ -16,8 +16,9 @@ interface ReactionOverlayProps {
 
 /**
  * Renders a floating-emoji layer over the question card. Mounted inside a
- * `relative` card container; every new reaction id spawns one pop animation
- * that fades out after a couple of seconds.
+ * `relative` card container; every new reaction id spawns one pop animation,
+ * rises a bit, then quickly flies up toward the top of the card while fading
+ * out so it disappears faster than before.
  */
 export const ReactionOverlay: React.FC<ReactionOverlayProps> = ({ reactions }) => {
   const [floating, setFloating] = useState<FloatingReaction[]>([]);
@@ -38,7 +39,7 @@ export const ReactionOverlay: React.FC<ReactionOverlayProps> = ({ reactions }) =
       setFloating((prev) => [...prev.slice(-11), item]);
       window.setTimeout(() => {
         setFloating((prev) => prev.filter((f) => f.id !== item.id));
-      }, 2600);
+      }, 1500);
     });
   }, [reactions]);
 
@@ -50,7 +51,12 @@ export const ReactionOverlay: React.FC<ReactionOverlayProps> = ({ reactions }) =
             key={f.id}
             initial={{ opacity: 0, y: 0, scale: 0.4, rotate: f.rot }}
             animate={{ opacity: 1, y: -130, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 1.4, y: -160 }}
+            exit={{
+              opacity: 0,
+              y: -300,
+              scale: 1.15,
+              transition: { duration: 0.55, ease: "easeIn" },
+            }}
             transition={{ type: "spring", stiffness: 260, damping: 18 }}
             style={{
               position: "absolute",

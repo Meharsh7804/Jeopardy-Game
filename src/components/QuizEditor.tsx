@@ -62,12 +62,17 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
 
   const [activeCatIdx, setActiveCatIdx] = useState(0);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
   // Auto-save debounce
   useEffect(() => {
     if (!quiz.title.trim() && quiz.categories.length === 0) return; // Don't auto-save empty new quizzes instantly
-    const t = setTimeout(() => saveQuiz(quiz), 1200);
+    const t = setTimeout(() => {
+      saveQuiz(quiz)
+        .then(() => setSaveFailed(false))
+        .catch(() => setSaveFailed(true));
+    }, 1200);
     return () => clearTimeout(t);
   }, [quiz, saveQuiz]);
 
@@ -157,38 +162,80 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     setQ(catIdx, qIdx, "isDailyDouble", false);
   };
 
-const handleImageUpload = (
-  catIdx: number,
-  qIdx: number,
-  file: File
-) => {
-  if (!file) return;
+  // Reads the file as a self-contained base64 data URL (blob: URLs only exist
+  // in the browser that created them, so players on other devices could never
+  // load images saved that way). Oversized images are downscaled/re-encoded so
+  // the stored string stays small enough for Firebase RTDB and realtime sync.
+  const compressImage = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Unable to read image."));
+      reader.onload = () => {
+        const original = reader.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const MAX_DIM = 1280;
+          const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+          // Already small and not oversized — keep the original untouched
+          // (preserves PNG transparency for small logos/icons).
+          if (file.size <= 300 * 1024 && scale === 1) {
+            resolve(original);
+            return;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(original);
+            return;
+          }
+          // JPEG has no alpha channel — white background for transparent PNGs.
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          resolve(dataUrl.length < original.length ? dataUrl : original);
+        };
+        img.onerror = () => reject(new Error("Unable to read image."));
+        img.src = original;
+      };
+      reader.readAsDataURL(file);
+    });
 
-  if (!file.type.startsWith("image/")) {
-    alert("Please select an image.");
-    return;
-  }
+  const handleImageUpload = async (
+    catIdx: number,
+    qIdx: number,
+    file: File,
+  ) => {
+    if (!file) return;
 
-  if (file.size > 2 * 1024 * 1024) {
-    alert("Image must be under 2 MB.");
-    return;
-  }
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image.");
+      return;
+    }
 
-  // Creates a lightweight, temporary local URL instantly (no async reader needed)
-  const previewUrl = URL.createObjectURL(file);
-  
-  // Update your state with the lightweight URL
-  setQ(catIdx, qIdx, "mediaUrl", previewUrl);
-  
-  // Optional: If you need to send the actual file to a backend API later, 
-  // you should also save the raw `file` object in your state, not just the URL.
-  // setQ(catIdx, qIdx, "rawFile", file); 
-};
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Image must be under 2 MB.");
+      return;
+    }
+
+    try {
+      const dataUrl = await compressImage(file);
+      setQ(catIdx, qIdx, "mediaUrl", dataUrl);
+    } catch {
+      alert("Unable to read image.");
+    }
+  };
 
   const handleSave = () => {
-    saveQuiz(quiz);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    saveQuiz(quiz)
+      .then(() => {
+        setSaveFailed(false);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      })
+      .catch(() => setSaveFailed(true));
   };
 
   const handleDelete = () => {
@@ -401,6 +448,23 @@ const handleImageUpload = (
           </button>
         </div>
       </div>
+
+      {saveFailed && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 rounded-xl bg-danger-accent/10 border border-danger-accent/30 flex items-center gap-3 text-danger-accent shadow-md"
+        >
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          <p className="text-sm font-bold">Save failed — the quiz may be too large to sync. Try a smaller image.</p>
+          <button
+            onClick={() => setSaveFailed(false)}
+            className="ml-auto p-1 hover:bg-danger-accent/20 rounded-md"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </motion.div>
+      )}
 
       {importError && (
         <motion.div

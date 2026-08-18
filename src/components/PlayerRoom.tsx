@@ -12,8 +12,12 @@ import { ReactionOverlay } from "./ReactionOverlay";
 import { ScorePopup } from "./ScorePopup";
 import { SettingsModal } from "./SettingsModal";
 import { StartCountdown } from "./StartCountdown";
+import { QuestionTimer } from "./QuestionTimer";
 import { useSettings } from "../context/SettingsContext";
-import { recordGameEnd } from "../utils/profile";
+import { recordGameEnd, checkLiveAchievements, achievementProgress, achievementHint, ACHIEVEMENT_IDS, loadProfile } from "../utils/profile";
+import type { AchievementId } from "../utils/profile";
+import { achievementBus } from "../utils/achievementBus";
+import { AchievementToast } from "./AchievementToast";
 
 const FUN_FACTS = [
   "Did you know? Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.",
@@ -40,7 +44,7 @@ interface PlayerRoomProps {
 
 export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const { room, myId, myName, buzz, sendReaction, leaveRoom } = useRoom();
-  const { t } = useSettings();
+  const { t, settings } = useSettings();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [categoryModalId, setCategoryModalId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -66,14 +70,92 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const [isOffline, setIsOffline] = useState(false);
   const [showRestored, setShowRestored] = useState(false);
 
-  // Game-show fanfare when the game ends.
+  // Theme music on game start ("Let's Buzz!" board landing) and victory
+  // fanfare when the game ends. Phase-transition guarded so remounts and
+  // reconnects never replay them.
+  const prevPhaseRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (room?.phase === "ended") soundManager.playWinner();
+    if (!room) return;
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = room.phase;
+    if (prev === undefined || prev === room.phase) return;
+    if (room.phase === "board") soundManager.playIntro();
+    if (room.phase === "ended") soundManager.playWinner();
   }, [room?.phase]);
 
-  // Record this finished game in the player's local profile (once per game).
+  // ── Achievements ────────────────────────────────────────────────────────────
+  // Baseline snapshot of the profile before this game starts (used to diff
+  // what unlocked during/at the end of this game), plus the set of ids that
+  // unlocked this game, and the awards/hints shown on the results screen.
+  const gameStartAchievementsRef = useRef<Record<string, number> | null>(null);
+  const gameUnlocksRef = useRef<Set<string>>(new Set());
+  const awardsHandledRef = useRef(false);
+  const [myAwards, setMyAwards] = useState<AchievementId[]>([]);
+  const [myHints, setMyHints] = useState<{ key: string; params?: Record<string, string | number> }[]>([]);
+
+  const seenAnyPhaseRef = useRef(false);
   useEffect(() => {
-    if (room?.phase === "ended" && myId) recordGameEnd(room, myId);
+    if (room?.phase === "starting") {
+      // Fresh game — baseline from the stored profile.
+      gameStartAchievementsRef.current = loadProfile().achievements;
+      gameUnlocksRef.current = new Set();
+      awardsHandledRef.current = false;
+      setMyAwards([]);
+      setMyHints([]);
+    } else if (!seenAnyPhaseRef.current && room) {
+      // Joined mid-game — nothing before this point counts as "this game".
+      seenAnyPhaseRef.current = true;
+      if (gameStartAchievementsRef.current === null) {
+        gameStartAchievementsRef.current = loadProfile().achievements;
+      }
+    }
+  }, [room?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live unlocks: streak goals and buzz-time goals pop the moment they're hit.
+  useEffect(() => {
+    const me = room?.players?.[myId];
+    if (!me || room?.phase === "ended") return;
+    const fastestMs = myBuzzTs > 0 && openedAt > 0 ? myBuzzTs - openedAt : undefined;
+    const newly = checkLiveAchievements({
+      bestStreak: me.bestStreak ?? 0,
+      fastestBuzzMs: fastestMs,
+    });
+    for (const id of newly) {
+      gameUnlocksRef.current.add(id);
+      achievementBus.emit(id);
+    }
+  }, [room?.players?.[myId], myBuzzTs, openedAt, room?.phase, myId]);
+
+  // Record this finished game in the player's local profile (once per game),
+  // toast anything unlocked by the final tally, and stage the awards panel.
+  useEffect(() => {
+    if (room?.phase !== "ended" || !myId) return;
+    const profile = recordGameEnd(room, myId);
+    const before = gameStartAchievementsRef.current ?? {};
+    const newlyAtEnd = ACHIEVEMENT_IDS.filter(
+      (id) => profile.achievements[id] && !before[id],
+    );
+    for (const id of newlyAtEnd) {
+      if (gameUnlocksRef.current.has(id)) continue;
+      gameUnlocksRef.current.add(id);
+      achievementBus.emit(id);
+    }
+
+    if (!awardsHandledRef.current) {
+      awardsHandledRef.current = true;
+      setMyAwards(ACHIEVEMENT_IDS.filter((id) => gameUnlocksRef.current.has(id)));
+      // Encouragement: hints for the locked achievements closest to unlocking.
+      const progress = achievementProgress(profile);
+      const locked = ACHIEVEMENT_IDS.filter((id) => !profile.achievements[id])
+        .sort((a, b) => progress[b] - progress[a])
+        .slice(0, 3);
+      setMyHints(
+        locked.map((id) => {
+          const h = achievementHint(id, profile);
+          return { key: h.key, params: h.params };
+        }),
+      );
+    }
   }, [room, myId]);
 
   // Players hear the verdict (correct/wrong) when their score changes. Past
@@ -180,6 +262,8 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
   return (
     <div className="min-h-screen flex flex-col select-none bg-primary-bg relative overflow-hidden">
+      {/* Achievement unlocked popups */}
+      <AchievementToast />
       {/* Background glow effects */}
       <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-secondary-accent/10 blur-[150px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary-accent/10 blur-[150px] rounded-full pointer-events-none" />
@@ -446,6 +530,10 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                   <span className="font-display font-black text-warning-accent text-xl">
                     ${room.activeQuestion.value}
                   </span>
+                  <QuestionTimer
+                    seconds={room.activeQuestion.timer ?? settings.defaultTimer}
+                    openedAt={room.activeQuestion.openedAt}
+                  />
                 </div>
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
@@ -697,6 +785,8 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               onExit={handleLeave}
               exitLabel={t('exitGame')}
               waitingNote={t('waitingForRematch')}
+              myAwards={myAwards}
+              myHints={myHints}
             />
           )}
         </AnimatePresence>
