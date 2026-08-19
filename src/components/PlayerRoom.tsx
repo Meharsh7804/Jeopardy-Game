@@ -92,6 +92,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const awardsHandledRef = useRef(false);
   const [myAwards, setMyAwards] = useState<AchievementId[]>([]);
   const [myHints, setMyHints] = useState<{ key: string; params?: Record<string, string | number> }[]>([]);
+  const [allUnlocked, setAllUnlocked] = useState(false);
 
   const seenAnyPhaseRef = useRef(false);
   useEffect(() => {
@@ -102,6 +103,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
       awardsHandledRef.current = false;
       setMyAwards([]);
       setMyHints([]);
+      setAllUnlocked(false);
     } else if (!seenAnyPhaseRef.current && room) {
       // Joined mid-game — nothing before this point counts as "this game".
       seenAnyPhaseRef.current = true;
@@ -146,9 +148,11 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
       setMyAwards(ACHIEVEMENT_IDS.filter((id) => gameUnlocksRef.current.has(id)));
       // Encouragement: hints for the locked achievements closest to unlocking.
       const progress = achievementProgress(profile);
-      const locked = ACHIEVEMENT_IDS.filter((id) => !profile.achievements[id])
+      const lockedAll = ACHIEVEMENT_IDS.filter((id) => !profile.achievements[id]);
+      const locked = lockedAll
         .sort((a, b) => progress[b] - progress[a])
         .slice(0, 3);
+      setAllUnlocked(lockedAll.length === 0);
       setMyHints(
         locked.map((id) => {
           const h = achievementHint(id, profile);
@@ -787,6 +791,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               waitingNote={t('waitingForRematch')}
               myAwards={myAwards}
               myHints={myHints}
+              allUnlocked={allUnlocked}
             />
           )}
         </AnimatePresence>

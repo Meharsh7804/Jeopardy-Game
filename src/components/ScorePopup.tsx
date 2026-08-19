@@ -8,22 +8,57 @@ interface ScorePopupProps {
 }
 
 /**
- * Floating +$X / −$X popup shown next to a player's row whenever a new score
- * change for that player lands. Mount inside a `relative` row container; each
- * score-history entry animates exactly once (diffed by entry id), so remounts
- * and reconnects never replay old popups. Only the latest change is ever shown —
- * a new change replaces whatever is on screen — and the whole enter-hold-exit
- * cycle stays around a second so nothing lingers into the next question.
+ * Module-scoped "already seen" ledger, keyed by player id. It lives outside the
+ * component so it survives the leaderboard remounting between phases. The
+ * leaderboard (and every ScorePopup) unmounts while a question is live and
+ * remounts when the board returns — without this ledger every remount would
+ * replay the player's most recent (possibly old, from a previous round) score
+ * change. With it, only entries that appeared *since* the board was first shown
+ * animate, i.e. exactly the current round's marks.
+ */
+const seenLedger = new Map<string, Set<string>>();
+
+/**
+ * Floating +$X / −$X popup shown next to a player's row whenever a score change
+ * for that player lands. Only the *current* round's change is ever animated —
+ * history that predates this device's first sight of the player is seeded into
+ * the ledger and never replays. A new change replaces whatever is on screen,
+ * and the enter-hold-exit cycle stays around a second so nothing lingers into
+ * the next question.
  */
 export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => {
-  const seen = useRef<Set<string>>(new Set());
   const [active, setActive] = useState<ScoreHistoryEntry[]>([]);
+  // Per-instance mirror of the ledger so a single mounted instance never
+  // re-shows an entry it already animated on a re-render.
+  const instanceSeen = useRef<Set<string> | null>(null);
 
   useEffect(() => {
+    const global = seenLedger.get(playerId);
+
+    // First time this device ever sees this player: seed the ledger with
+    // whatever history already exists (even if empty) so nothing that happened
+    // before now is replayed as a "new" animation.
+    if (!global) {
+      const seeded = new Set<string>();
+      if (entries) {
+        Object.values(entries).forEach((e) => {
+          if (e && e.teamId === playerId) seeded.add(e.id);
+        });
+      }
+      seenLedger.set(playerId, seeded);
+      instanceSeen.current = new Set(seeded);
+      return;
+    }
+
     if (!entries) return;
+    if (instanceSeen.current === null) {
+      instanceSeen.current = new Set(global);
+    }
+
     Object.values(entries).forEach((e) => {
-      if (!e || e.teamId !== playerId || seen.current.has(e.id)) return;
-      seen.current.add(e.id);
+      if (!e || e.teamId !== playerId || instanceSeen.current!.has(e.id)) return;
+      instanceSeen.current!.add(e.id);
+      global.add(e.id);
       // Replace whatever is showing — only the latest change is displayed.
       setActive([e]);
       window.setTimeout(() => {

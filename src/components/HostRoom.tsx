@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { soundManager } from "../utils/sound";
 import { PlayerAvatar } from "../utils/playerAvatar";
+import { Logo } from "./ui/Logo";
 import { ResultsScreen } from "./ResultsScreen";
 import { ReactionOverlay } from "./ReactionOverlay";
 import { ScorePopup } from "./ScorePopup";
@@ -251,9 +252,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
       {/* ── Top bar ────────────────────────────────────────────────────── */}
       <header className="glass-panel relative z-40 px-6 py-4 flex items-center justify-between border-b border-white/5 shadow-md">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-accent to-secondary-accent flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.4)]">
-            <span className="font-display font-black text-lg text-white">Q</span>
-          </div>
+          <Logo size={40} />
           <div>
             <h1 className="font-display font-bold text-lg text-white leading-tight">{t('hostDashboard')}</h1>
             <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">{quiz?.title || "Loading..."}</p>

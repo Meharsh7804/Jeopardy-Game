@@ -29,6 +29,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { PlayerAvatar } from "../utils/playerAvatar";
+import { Logo } from "./ui/Logo";
 import { SettingsModal } from "./SettingsModal";
 import { HeroQuizArena } from "./HeroQuizArena";
 import { ACHIEVEMENT_ICONS } from "../utils/achievements";
@@ -161,12 +162,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
       {/* ── Minimal navigation ─────────────────────────────────────────── */}
       <header className="relative z-40 w-full max-w-7xl mx-auto px-5 sm:px-10 pt-6 pb-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-accent to-secondary-accent flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.35)]">
-            <span className="font-display font-black text-lg text-white">BQ</span>
-          </div>
-          <span className="hidden sm:block font-display font-extrabold text-xs tracking-[0.2em] text-white uppercase">
-            Buzzing With Quizzing
-          </span>
+          <Logo size={40} withWordmark />
         </div>
 
         <div className="flex items-center gap-2">

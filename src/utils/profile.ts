@@ -34,6 +34,7 @@ const KEY = "jeopardy_profile";
 const DEDUPE_KEY = "jeopardy_profile_recorded";
 const HISTORY_KEY = "jeopardy_match_history";
 const SEASONS_KEY = "jeopardy_seasons";
+const SEASON_FIX_KEY = "jeopardy_season_fix_v1";
 
 const HISTORY_LIMIT = 20;
 
@@ -88,8 +89,30 @@ const loadJSON = <T,>(storageKey: string, fallback: T): T => {
 /** Recent finished games, newest first. */
 export const loadMatchHistory = (): MatchRecord[] => loadJSON<MatchRecord[]>(HISTORY_KEY, []);
 
-/** Per-calendar-month standings, keyed "YYYY-MM". */
-export const loadSeasons = (): Record<string, SeasonStats> => loadJSON(SEASONS_KEY, {});
+/**
+ * Per-calendar-month standings, keyed "YYYY-MM".
+ *
+ * Runs a one-time fix for the old double-counting bug: the previous
+ * sessionStorage-based dedupe recorded a finished game twice when a tab was
+ * reopened on an already-ended room, inflating the current month's game count
+ * by one. Subtracts that single phantom count once per device.
+ */
+export const loadSeasons = (): Record<string, SeasonStats> => {
+  const seasons = loadJSON<Record<string, SeasonStats>>(SEASONS_KEY, {});
+  try {
+    if (!localStorage.getItem(SEASON_FIX_KEY)) {
+      localStorage.setItem(SEASON_FIX_KEY, "1");
+      const s = seasons[seasonKeyOf()];
+      if (s && s.games > 0) {
+        s.games = Math.max(s.games - 1, 0);
+        localStorage.setItem(SEASONS_KEY, JSON.stringify(seasons));
+      }
+    }
+  } catch {
+    // storage unavailable — leave season data untouched
+  }
+  return seasons;
+};
 
 export const seasonKeyOf = (date: Date = new Date()): string => {
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -262,23 +285,31 @@ export const achievementHint = (
 
 /**
  * Records a finished game into the local player's profile. Dedupes via
- * sessionStorage so remounts/reconnects (and StrictMode double-effects) never
- * double-count; a rematch in the same room is a new marker because scores and
- * completed questions reset.
+ * localStorage so remounts/reconnects, StrictMode double-effects and new
+ * tabs/sessions rejoining an already-ended room never double-count.
+ *
+ * The marker is built from fields that cannot change once a game has ended:
+ * room id, room creation time, the OLDEST score-history timestamp (the host's
+ * "Undo Last" only ever removes the newest entry) and the completed-question
+ * count. A rematch in the same room wipes scoreHistory, so it always produces
+ * a fresh marker.
  */
 export const recordGameEnd = (room: Room, myId: string): PlayerProfile => {
-  const questionCount = Object.keys(room.completedQuestions || {}).length;
-  const totalScore = Object.values(room.players).reduce((s, p) => s + (p.score || 0), 0);
-  const marker = `${room.id}:${questionCount}:${totalScore}`;
-  try {
-    if (sessionStorage.getItem(DEDUPE_KEY) === marker) return loadProfile();
-    sessionStorage.setItem(DEDUPE_KEY, marker);
-  } catch {
-    // no sessionStorage — proceed anyway
-  }
-
   const me = room.players[myId];
   if (!me || me.isHost) return loadProfile();
+
+  const questionCount = Object.keys(room.completedQuestions || {}).length;
+  const entryTs = Object.values(room.scoreHistory || {})
+    .map((e) => e?.timestamp ?? 0)
+    .filter((ts) => ts > 0);
+  const oldestTs = entryTs.length > 0 ? Math.min(...entryTs) : 0;
+  const marker = `${room.id}:${room.createdAt}:${oldestTs}:${questionCount}`;
+  try {
+    if (localStorage.getItem(DEDUPE_KEY) === marker) return loadProfile();
+    localStorage.setItem(DEDUPE_KEY, marker);
+  } catch {
+    // storage unavailable — stats stay in-memory only
+  }
 
   const ranked = Object.values(room.players)
     .filter((p) => !p.isHost)

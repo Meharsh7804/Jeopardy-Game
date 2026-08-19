@@ -42,7 +42,7 @@ export const AchievementToast: React.FC = () => {
   }, []);
 
   return (
-    <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-3 pointer-events-none">
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[90] flex flex-col items-center gap-3 pointer-events-none">
       <AnimatePresence>
         {toasts.map((toast) => {
           const Icon = ACHIEVEMENT_ICONS[toast.id];
@@ -50,26 +50,33 @@ export const AchievementToast: React.FC = () => {
           return (
             <motion.div
               key={toast.key}
-              initial={{ opacity: 0, y: -40, scale: 0.7 }}
+              initial={{ opacity: 0, y: -60, scale: 0.6 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -30, scale: 0.85 }}
-              transition={{ type: "spring", stiffness: 320, damping: 22 }}
-              className="flex items-center gap-3.5 pl-3.5 pr-7 py-3.5 rounded-2xl glass-panel-heavy border border-warning-accent/40 bg-black/70 shadow-[0_0_40px_rgba(245,158,11,0.35)] backdrop-blur-xl"
+              transition={{ type: "spring", stiffness: 380, damping: 20 }}
+              className="relative flex items-center gap-4 pl-4 pr-8 py-4 rounded-2xl glass-panel-heavy border-2 border-warning-accent/60 bg-black/80 shadow-[0_0_50px_rgba(245,158,11,0.5)] backdrop-blur-xl overflow-hidden"
             >
+              {/* golden sweep */}
+              <motion.span
+                initial={{ left: "-40%" }}
+                animate={{ left: "120%" }}
+                transition={{ duration: 1.4, ease: "easeOut", delay: 0.2 }}
+                className="absolute top-0 bottom-0 w-1/3 bg-gradient-to-r from-transparent via-warning-accent/20 to-transparent skew-x-[-20deg]"
+              />
               <span className="relative">
-                <span className="absolute inset-0 bg-warning-accent/40 blur-lg rounded-full" />
-                <span className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-warning-accent to-amber-600 flex items-center justify-center text-black shadow-lg">
-                  <Icon className="w-6 h-6" />
+                <span className="absolute inset-0 bg-warning-accent/50 blur-xl rounded-full animate-pulse-glow" />
+                <span className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-warning-accent to-amber-600 flex items-center justify-center text-black shadow-[0_0_25px_rgba(245,158,11,0.6)]">
+                  <Icon className="w-7 h-7" />
                 </span>
               </span>
-              <span className="text-left">
-                <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-warning-accent">
-                  <Award className="w-3 h-3" /> {t("achievementUnlocked")}
+              <span className="relative text-left">
+                <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-warning-accent">
+                  <Award className="w-3.5 h-3.5" /> {t("achievementUnlocked")}
                 </span>
-                <span className="block font-display font-black text-lg text-white leading-tight">
+                <span className="block font-display font-black text-xl text-white leading-tight mt-0.5">
                   {t(nameKey)}
                 </span>
-                <span className="block text-[11px] text-text-muted leading-tight mt-0.5">
+                <span className="block text-xs text-text-muted leading-tight mt-0.5">
                   {t(`${nameKey}Desc`)}
                 </span>
               </span>
