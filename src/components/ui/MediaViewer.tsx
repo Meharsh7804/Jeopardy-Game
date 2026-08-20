@@ -7,6 +7,7 @@ interface MediaViewerProps {
   className?: string;
   autoPlay?: boolean;
   onEnded?: () => void;
+  onError?: (e: React.SyntheticEvent<HTMLMediaElement | HTMLImageElement>) => void;
 }
 
 export const MediaViewer: React.FC<MediaViewerProps> = ({
@@ -15,6 +16,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   className = "w-full h-full object-contain",
   autoPlay = true,
   onEnded,
+  onError,
 }) => {
   const isAudio = type === "audio" || url.startsWith("data:audio") || url.match(/\.(mp3|wav|ogg)$/i);
   const isVideo = type === "video" || url.startsWith("data:video") || url.match(/\.(mp4|webm|ogg)$/i);
@@ -39,6 +41,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           controls
           className="w-full"
           onEnded={onEnded}
+          onError={onError}
         />
       </div>
     );
@@ -53,10 +56,11 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         playsInline
         className={className}
         onEnded={onEnded}
+        onError={onError}
       />
     );
   }
 
   // Fallback to image
-  return <img src={url} alt="Media" className={className} />;
+  return <img src={url} alt="Media" className={className} onError={onError} />;
 };
