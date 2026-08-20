@@ -671,6 +671,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     if (roomCode) {
       if (room?.hostId === myId) {
         await remove(ref(db, `rooms/${roomCode}`));
+        if (room?.quizId) {
+          // Clean up the temporary quiz copy used for this room to save database storage
+          await remove(ref(db, `quizzes/${room.quizId}`));
+        }
       } else {
         await remove(ref(db, `rooms/${roomCode}/players/${myId}`));
         await remove(ref(db, `rooms/${roomCode}/buzzes/${myId}`));

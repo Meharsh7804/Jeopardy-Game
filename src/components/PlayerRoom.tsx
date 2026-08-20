@@ -18,6 +18,7 @@ import { recordGameEnd, checkLiveAchievements, achievementProgress, achievementH
 import type { AchievementId } from "../utils/profile";
 import { achievementBus } from "../utils/achievementBus";
 import { AchievementToast } from "./AchievementToast";
+import { MediaViewer } from "./ui/MediaViewer";
 
 const FUN_FACTS = [
   "Did you know? Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.",
@@ -541,10 +542,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 </div>
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
-                    <img
-                      src={room.activeQuestion.mediaUrl}
-                      alt="Question media"
-                      className="max-h-56 w-full object-contain"
+                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-56 w-full object-contain"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -709,10 +707,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 </div>
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
-                    <img
-                      src={room.activeQuestion.mediaUrl}
-                      alt="Question media"
-                      className="max-h-56 w-full object-contain"
+                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-56 w-full object-contain"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -750,10 +745,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10 relative">
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
-                    <img
-                      src={room.activeQuestion.mediaUrl}
-                      alt="Question media"
-                      className="max-h-56 w-full object-contain"
+                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-56 w-full object-contain"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}

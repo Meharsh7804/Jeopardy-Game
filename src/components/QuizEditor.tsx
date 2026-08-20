@@ -215,28 +215,43 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
       reader.readAsDataURL(file);
     });
 
-  const handleImageUpload = async (
+  const handleMediaUpload = async (
     catIdx: number,
     qIdx: number,
     file: File,
   ) => {
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Please select an image.");
+    const isImage = file.type.startsWith("image/");
+    const isAudio = file.type.startsWith("audio/");
+    const isVideo = file.type.startsWith("video/");
+
+    if (!isImage && !isAudio && !isVideo) {
+      alert("Please select an image, audio, or video file.");
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert("Image must be under 2 MB.");
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Media must be under 4 MB.");
       return;
     }
 
     try {
-      const dataUrl = await compressImage(file);
+      let dataUrl: string;
+      if (isImage) {
+        dataUrl = await compressImage(file);
+      } else {
+        // For audio/video, just read as base64 without compression
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error("Unable to read media."));
+          reader.readAsDataURL(file);
+        });
+      }
       setQ(catIdx, qIdx, "mediaUrl", dataUrl);
     } catch {
-      alert("Unable to read image.");
+      alert("Unable to read media file.");
     }
   };
 
@@ -845,13 +860,13 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
 
                     {/* Media type + upload */}
 <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-black/20 p-4 rounded-2xl border border-white/5">
-  <div className="flex bg-black/40 border border-white/10 p-1 rounded-xl shadow-inner shrink-0">
-    {(["text", "image", "both"] as const).map((t) => (
+  <div className="flex bg-black/40 border border-white/10 p-1 rounded-xl shadow-inner shrink-0 flex-wrap gap-1">
+    {(["text", "image", "audio", "video", "both"] as const).map((t) => (
       <button
         key={t}
         type="button"
         onClick={() => setQ(activeCatIdx, qIdx, "type", t)}
-        className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+        className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
           q.type === t
             ? "bg-white/10 text-white shadow-sm"
             : "text-text-muted hover:text-white"
@@ -867,7 +882,7 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
       <div className="flex-1 relative">
         <input
           type="text"
-          placeholder="https://example.com/image.jpg"
+          placeholder="https://example.com/media.mp4"
           value={q.mediaUrl || ""}
           onChange={(e) => {
             // ✅ FIXED: Directly set the mediaUrl to the typed/pasted text
@@ -883,12 +898,12 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
           <Upload className="w-4 h-4" />
           <input
             type="file"
-            accept="image/*"
+            accept="image/*,audio/*,video/*"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
-                handleImageUpload(activeCatIdx, qIdx, file);
+                handleMediaUpload(activeCatIdx, qIdx, file);
               }
               // Optional: Reset the input value so the user can upload the same file again if they delete it
               e.target.value = "";
@@ -898,12 +913,18 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
         </label>
 
         {q.mediaUrl && (
-          <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black group">
-            <img
-              src={q.mediaUrl}
-              alt="Preview"
-              className="w-full h-full object-cover"
-            />
+          <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black group flex items-center justify-center">
+            {q.mediaUrl.startsWith("data:audio") || q.type === "audio" ? (
+              <span className="text-[8px] font-bold text-white uppercase tracking-widest">Audio</span>
+            ) : q.mediaUrl.startsWith("data:video") || q.type === "video" ? (
+              <video src={q.mediaUrl} className="w-full h-full object-cover" />
+            ) : (
+              <img
+                src={q.mediaUrl}
+                alt="Preview"
+                className="w-full h-full object-cover"
+              />
+            )}
             <button
               onClick={() =>
                 setQ(activeCatIdx, qIdx, "mediaUrl", undefined)

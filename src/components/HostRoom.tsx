@@ -30,6 +30,7 @@ import { useSettings } from "../context/SettingsContext";
 import { QrJoinModal } from "./QrJoinModal";
 import { QuestionTimer } from "./QuestionTimer";
 import { AchievementToast } from "./AchievementToast";
+import { MediaViewer } from "./ui/MediaViewer";
 
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
@@ -583,23 +584,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     <span className="font-display font-black text-warning-accent text-3xl drop-shadow-md">
                       ${room.activeQuestion.value}
                     </span>
-                    <QuestionTimer
-                      seconds={room.activeQuestion.timer ?? settings.defaultTimer}
-                      openedAt={room.activeQuestion.openedAt}
-                    />
-                  </div>
+                    </div>
 
                   {room.activeQuestion.mediaUrl && (
                     <div className="relative rounded-3xl overflow-hidden border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)] mx-auto w-fit max-h-72 bg-black">
-                      <img
-                        src={room.activeQuestion.mediaUrl}
-                        alt="Question media"
-                        className="max-h-72 object-contain"
-                        onError={(e) => {
-                          console.error("Image failed to load");
-                          e.currentTarget.style.display = "none";
-                        }}
-                      />
+                      <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-72 object-contain" />
                     </div>
                   )}
 

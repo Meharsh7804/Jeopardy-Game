@@ -1,6 +1,6 @@
 // ─── Question / Quiz types ───────────────────────────────────────────────────
 
-export type QuestionType = "text" | "image" | "both";
+export type QuestionType = "text" | "image" | "audio" | "video" | "both";
 
 export interface Question {
   id: string;
