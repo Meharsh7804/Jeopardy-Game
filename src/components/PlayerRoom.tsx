@@ -551,7 +551,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     />
                   </div>
                 )}
-                <p className="text-2xl sm:text-3xl font-display font-bold text-white leading-relaxed whitespace-pre-wrap">
+                <p className="text-lg sm:text-2xl font-display font-semibold text-white leading-relaxed whitespace-pre-wrap">
                   {room.activeQuestion.text}
                 </p>
                 <ReactionOverlay reactions={room.reactions} />
@@ -719,7 +719,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     />
                   </div>
                 )}
-                <p className="text-2xl sm:text-3xl font-display font-bold text-white leading-relaxed whitespace-pre-wrap">
+                <p className="text-lg sm:text-2xl font-display font-semibold text-white leading-relaxed whitespace-pre-wrap">
                   {room.activeQuestion.text}
                 </p>
               </div>
@@ -760,7 +760,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     />
                   </div>
                 )}
-                <p className="text-xl font-display font-medium text-text-muted/80 whitespace-pre-wrap">
+                <p className="text-base font-display font-medium text-text-muted/80 whitespace-pre-wrap">
                   {room.activeQuestion.text}
                 </p>
                 <div className="p-8 rounded-2xl bg-success-accent/10 border border-success-accent/30 relative overflow-hidden shadow-lg">

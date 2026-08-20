@@ -29,6 +29,7 @@ import { StartCountdown } from "./StartCountdown";
 import { useSettings } from "../context/SettingsContext";
 import { QrJoinModal } from "./QrJoinModal";
 import { QuestionTimer } from "./QuestionTimer";
+import { AchievementToast } from "./AchievementToast";
 
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
@@ -245,6 +246,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
   return (
     <div className="min-h-screen flex flex-col bg-primary-bg relative overflow-hidden text-white font-sans">
+      {/* Achievement unlocked popups */}
+      <AchievementToast />
       {/* Background Ambience */}
       <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-primary-accent/15 blur-[180px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-secondary-accent/10 blur-[180px] rounded-full pointer-events-none" />
@@ -600,7 +603,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     </div>
                   )}
 
-                  <p className="text-3xl md:text-5xl font-display font-black text-white leading-tight whitespace-pre-wrap px-4 drop-shadow-lg">
+                  <p className="text-xl md:text-3xl font-display font-semibold text-white leading-snug whitespace-pre-wrap px-4 drop-shadow-lg">
                     {room.activeQuestion.text}
                   </p>
 

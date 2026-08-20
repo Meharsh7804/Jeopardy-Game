@@ -19,6 +19,10 @@ import {
   Layout,
   AlertCircle,
   BookOpen,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 interface QuizEditorProps {
@@ -57,6 +61,7 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
       description: "Custom trivia board",
       categories: [], // Starts empty, let user add categories
       createdAt: Date.now(),
+      password: "",
     };
   });
 
@@ -64,6 +69,13 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordLocked, setPasswordLocked] = useState(() => {
+    // If editing a quiz that already has a password, start locked until verified
+    return !!(quizToEdit?.password && quizToEdit.password.trim());
+  });
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
 
   // Auto-save debounce
   useEffect(() => {
@@ -373,6 +385,80 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
     reader.readAsText(file);
   };
 
+  if (passwordLocked) {
+    return (
+      <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8 flex items-center justify-center min-h-screen bg-primary-bg relative">
+        <div className="absolute top-[-10%] left-[-10%] w-[30%] h-[30%] bg-primary-accent/10 blur-[120px] rounded-full pointer-events-none" />
+        <motion.div
+          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 280, damping: 22 }}
+          className="glass-panel-heavy rounded-3xl p-10 max-w-md w-full flex flex-col items-center gap-6 shadow-2xl border border-white/10 relative z-10"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-warning-accent to-amber-600 flex items-center justify-center shadow-lg">
+            <Lock className="w-8 h-8 text-black" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-3xl font-display font-black text-white">Password Protected</h2>
+            <p className="text-text-muted text-sm mt-1">Enter the quiz password to edit <span className="font-bold text-white">{quizToEdit?.title}</span></p>
+          </div>
+          <div className="w-full space-y-3">
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={passwordInput}
+                onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (passwordInput === (quizToEdit?.password ?? "")) {
+                      setPasswordLocked(false);
+                    } else {
+                      setPasswordError(true);
+                    }
+                  }
+                }}
+                placeholder="Enter password…"
+                className={`w-full bg-black/40 border rounded-xl px-4 py-3 pr-12 text-sm text-white font-bold outline-none transition-all shadow-inner ${
+                  passwordError ? "border-danger-accent focus:ring-1 focus:ring-danger-accent" : "border-white/10 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent"
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {passwordError && (
+              <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-danger-accent text-xs font-bold flex items-center gap-1.5">
+                <X className="w-3 h-3" /> Incorrect password. Try again.
+              </motion.p>
+            )}
+            <button
+              onClick={() => {
+                if (passwordInput === (quizToEdit?.password ?? "")) {
+                  setPasswordLocked(false);
+                } else {
+                  setPasswordError(true);
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl premium-btn font-bold text-base text-white shadow-lg"
+            >
+              <Unlock className="w-4 h-4" /> Unlock Editor
+            </button>
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted text-sm font-bold hover:bg-white/10 hover:text-white transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8 flex flex-col gap-6 min-h-screen bg-primary-bg relative">
       <div className="absolute top-[-10%] left-[-10%] w-[30%] h-[30%] bg-primary-accent/10 blur-[120px] rounded-full pointer-events-none" />
@@ -513,6 +599,30 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
                 placeholder="A fun trivia game for everyone"
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white font-medium outline-none focus:border-primary-accent focus:ring-1 focus:ring-primary-accent transition-all shadow-inner resize-none"
               />
+            </div>
+
+            {/* Quiz Password */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-warning-accent uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                <Lock className="w-3 h-3" /> Edit Password (optional)
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={quiz.password ?? ""}
+                  onChange={(e) => setField("password", e.target.value)}
+                  placeholder="Leave blank for no password"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 pr-12 text-sm text-white font-bold outline-none focus:border-warning-accent focus:ring-1 focus:ring-warning-accent transition-all shadow-inner"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-white transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-text-muted ml-1">Anyone editing this quiz will need to enter this password.</p>
             </div>
 
             <div className="pt-4 border-t border-white/5 mt-4">

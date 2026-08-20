@@ -276,60 +276,102 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
       {players.length > 0 && (
         <div className="w-full max-w-2xl">
           {players.length >= 2 ? (
-            <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end">
-              {podiumOrder.map((p, idx) => {
-                const rank = podiumOrder.length === 3 ? [2, 1, 3][idx] : idx + 1;
-                const style = podiumStyle[rank] ?? podiumStyle[1];
-                const isMe = p.id === myId;
-                return (
-                  <motion.div
-                    key={p.id}
-                    initial={{ opacity: 0, y: 60 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 300,
-                      damping: 25,
-                      mass: 0.8,
-                      delay: 0.45 + 0.18 * idx,
-                    }}
-                    className={`${style.height} ${style.ring} rounded-t-3xl border border-b-0 p-3 sm:p-4 flex flex-col items-center justify-end gap-2 relative overflow-hidden`}
-                  >
-                    {rank === 1 && (
-                      <motion.div
-                        initial={{ y: -40, opacity: 0, rotate: -20 }}
-                        animate={{ y: 0, opacity: 1, rotate: 0 }}
-                        transition={{ delay: 0.9, type: "spring", stiffness: 300, damping: 18 }}
-                        className="absolute -top-7"
-                      >
-                        <Crown className="w-10 h-10 text-warning-accent fill-warning-accent drop-shadow-lg" />
-                      </motion.div>
-                    )}
-                    <div className="relative">
-                      <PlayerAvatar
-                        seed={p.id}
-                        name={p.name}
-                        size={rank === 1 ? 76 : 54}
-                        className={`rounded-full ring-2 ${rank === 1 ? "ring-warning-accent/70 shadow-[0_0_25px_rgba(245,158,11,0.35)]" : "ring-white/10"}`}
-                      />
-                      {isMe && (
-                        <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-primary-accent text-white text-[9px] font-black uppercase">
-                          {t("you")}
-                        </span>
+            /* Avatars sit ABOVE the podium block so they're never clipped */
+            <div className="flex flex-col gap-0">
+              {/* Avatar row — floats above the colored podium columns */}
+              <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end mb-0">
+                {podiumOrder.map((p, idx) => {
+                  const rank = podiumOrder.length === 3 ? [2, 1, 3][idx] : idx + 1;
+                  const style = podiumStyle[rank] ?? podiumStyle[1];
+                  const isMe = p.id === myId;
+                  // Unique celebration poses per rank via CSS rotate/translate
+                  const poseClass =
+                    rank === 1
+                      ? "animate-bounce" // champion bounces
+                      : rank === 2
+                      ? "[transform:rotate(-6deg)]" // 2nd tilts left
+                      : "[transform:rotate(6deg)]";  // 3rd tilts right
+
+                  return (
+                    <motion.div
+                      key={p.id}
+                      initial={{ opacity: 0, y: -30 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 22,
+                        mass: 0.8,
+                        delay: 0.45 + 0.18 * idx,
+                      }}
+                      className="flex flex-col items-center gap-1.5 pb-2"
+                    >
+                      {rank === 1 && (
+                        <motion.div
+                          initial={{ y: -20, opacity: 0, rotate: -20 }}
+                          animate={{ y: 0, opacity: 1, rotate: 0 }}
+                          transition={{ delay: 0.9, type: "spring", stiffness: 300, damping: 18 }}
+                        >
+                          <Crown className="w-9 h-9 text-warning-accent fill-warning-accent drop-shadow-lg mb-1" />
+                        </motion.div>
                       )}
-                    </div>
-                    <p className={`font-display font-black text-base sm:text-xl truncate w-full leading-tight ${style.name}`}>
-                      {p.name}
-                    </p>
-                    <p className="font-display font-black text-2xl sm:text-4xl text-white drop-shadow">
-                      <ScoreCount value={p.score ?? 0} delay={650 + idx * 200} />
-                    </p>
-                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black tracking-widest ${style.badge}`}>
-                      {style.label}
-                    </span>
-                  </motion.div>
-                );
-              })}
+                      {rank !== 1 && <div className="h-10" />}
+                      <div className={`relative ${poseClass}`}>
+                        <PlayerAvatar
+                          seed={p.id}
+                          name={p.name}
+                          size={rank === 1 ? 80 : 60}
+                          className={`rounded-full ring-2 ${
+                            rank === 1
+                              ? "ring-warning-accent/70 shadow-[0_0_30px_rgba(245,158,11,0.45)]"
+                              : rank === 2
+                              ? "ring-slate-300/50"
+                              : "ring-orange-700/50"
+                          }`}
+                        />
+                        {isMe && (
+                          <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-primary-accent text-white text-[9px] font-black uppercase">
+                            {t("you")}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`font-display font-black text-xs sm:text-sm truncate w-full text-center leading-tight px-1 ${style.name}`}>
+                        {p.name}
+                      </p>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Podium columns — no overflow-hidden so avatars above are safe */}
+              <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end">
+                {podiumOrder.map((p, idx) => {
+                  const rank = podiumOrder.length === 3 ? [2, 1, 3][idx] : idx + 1;
+                  const style = podiumStyle[rank] ?? podiumStyle[1];
+                  return (
+                    <motion.div
+                      key={`podium-${p.id}`}
+                      initial={{ opacity: 0, y: 40 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 25,
+                        mass: 0.8,
+                        delay: 0.55 + 0.18 * idx,
+                      }}
+                      className={`${style.height} ${style.ring} rounded-t-3xl border border-b-0 flex flex-col items-center justify-center gap-2 px-2`}
+                    >
+                      <p className="font-display font-black text-2xl sm:text-4xl text-white drop-shadow">
+                        <ScoreCount value={p.score ?? 0} delay={700 + idx * 200} />
+                      </p>
+                      <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black tracking-widest ${style.badge}`}>
+                        {style.label}
+                      </span>
+                    </motion.div>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <motion.div

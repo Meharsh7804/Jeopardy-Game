@@ -26,6 +26,7 @@ export interface Quiz {
   description?: string;
   categories: Category[];
   createdAt: number;
+  password?: string; // optional password to restrict who can edit this quiz
 }
 
 // ─── Multiplayer Room types (Firebase) ───────────────────────────────────────

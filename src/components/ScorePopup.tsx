@@ -8,41 +8,35 @@ interface ScorePopupProps {
 }
 
 /**
- * Module-scoped "already seen" ledger, keyed by player id. It lives outside the
- * component so it survives the leaderboard remounting between phases. The
- * leaderboard (and every ScorePopup) unmounts while a question is live and
- * remounts when the board returns — without this ledger every remount would
- * replay the player's most recent (possibly old, from a previous round) score
- * change. With it, only entries that appeared *since* the board was first shown
- * animate, i.e. exactly the current round's marks.
+ * Module-scoped "already seen" ledger, keyed by player id. Lives outside the
+ * component so it survives remounts between phases.
  */
 const seenLedger = new Map<string, Set<string>>();
 
 /**
- * Floating +$X / −$X popup shown next to a player's row whenever a score change
- * for that player lands. Only the *current* round's change is ever animated —
- * history that predates this device's first sight of the player is seeded into
- * the ledger and never replays. A new change replaces whatever is on screen,
- * and the enter-hold-exit cycle stays around a second so nothing lingers into
- * the next question.
+ * Floating +$X / −$X popup shown next to a player's score row *only* when
+ * that specific player's score actually changed in the most-recent round.
+ *
+ * Key invariants:
+ *  - Players whose score did NOT change stay silent (no stale animations).
+ *  - Only the newest entry for each player is ever shown.
+ *  - History that predates this client's first mount is seeded as "already
+ *    seen" so reconnects / remounts never replay old changes.
  */
 export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => {
   const [active, setActive] = useState<ScoreHistoryEntry[]>([]);
-  // Per-instance mirror of the ledger so a single mounted instance never
-  // re-shows an entry it already animated on a re-render.
   const instanceSeen = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     const global = seenLedger.get(playerId);
 
-    // First time this device ever sees this player: seed the ledger with
-    // whatever history already exists (even if empty) so nothing that happened
-    // before now is replayed as a "new" animation.
+    // First time we see this player on this device: seed the ledger so that
+    // every entry that already exists is treated as "already animated".
     if (!global) {
       const seeded = new Set<string>();
       if (entries) {
         Object.values(entries).forEach((e) => {
-          if (e && e.teamId === playerId) seeded.add(e.id);
+          if (e) seeded.add(e.id);
         });
       }
       seenLedger.set(playerId, seeded);
@@ -55,29 +49,35 @@ export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => 
       instanceSeen.current = new Set(global);
     }
 
+    // Collect only entries that belong to THIS player and are genuinely new.
+    const newForMe: ScoreHistoryEntry[] = [];
     Object.values(entries).forEach((e) => {
       if (!e || e.teamId !== playerId || instanceSeen.current!.has(e.id)) return;
       instanceSeen.current!.add(e.id);
       global.add(e.id);
-      // Replace whatever is showing — only the latest change is displayed.
-      setActive([e]);
-      window.setTimeout(() => {
-        setActive((prev) => prev.filter((x) => x.id !== e.id));
-      }, 1000);
+      newForMe.push(e);
     });
+
+    if (newForMe.length === 0) return;
+
+    // Only show the most-recent change for this player.
+    const latest = newForMe.sort((a, b) => b.timestamp - a.timestamp)[0];
+    setActive([latest]);
+    window.setTimeout(() => {
+      setActive((prev) => prev.filter((x) => x.id !== latest.id));
+    }, 1400);
   }, [entries, playerId]);
 
   return (
     <AnimatePresence>
-      {active.map((e, i) => (
+      {active.map((e) => (
         <motion.span
           key={e.id}
-          initial={{ opacity: 0, y: 2, scale: 0.9 }}
-          animate={{ opacity: 1, y: -12, scale: 1 }}
-          exit={{ opacity: 0, y: -16, transition: { duration: 0.2, ease: "easeIn" } }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          style={{ top: -12 - i * 20 }}
-          className={`absolute right-2 font-display font-black text-base sm:text-lg pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] ${
+          initial={{ opacity: 0, y: 2, scale: 0.85 }}
+          animate={{ opacity: 1, y: -14, scale: 1 }}
+          exit={{ opacity: 0, y: -20, transition: { duration: 0.25, ease: "easeIn" } }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+          className={`absolute right-2 top-0 font-display font-black text-base sm:text-lg pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] z-20 ${
             e.changeAmount >= 0 ? "text-success-accent" : "text-danger-accent"
           }`}
         >
