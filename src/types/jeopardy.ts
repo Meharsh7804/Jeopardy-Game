@@ -10,7 +10,6 @@ export interface Question {
   type: QuestionType;
   mediaUrl?: string;
   isDailyDouble?: boolean;
-  timer?: number;
 }
 
 export interface Category {
@@ -74,7 +73,6 @@ export interface ActiveQuestion {
   isDailyDouble?: boolean;
   revealAnswer: boolean;
   openedAt?: number; // server-resolved timestamp of when buzzing opened — reaction time = buzz - openedAt
-  timer?: number; // seconds players have to buzz, before the urgency phase kicks in
 }
 
 export interface RoomReaction {
@@ -115,7 +113,6 @@ export interface ScoreHistoryEntry {
 export interface GameSettings {
   soundVolume: number;
   isSoundMuted: boolean;
-  defaultTimer: number;
   largeFontMode: boolean;
   animationSpeed: "slow" | "normal" | "fast";
   language: "en" | "es" | "fr" | "de";

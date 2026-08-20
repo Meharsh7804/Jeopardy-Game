@@ -12,7 +12,6 @@ import { ReactionOverlay } from "./ReactionOverlay";
 import { ScorePopup } from "./ScorePopup";
 import { SettingsModal } from "./SettingsModal";
 import { StartCountdown } from "./StartCountdown";
-import { QuestionTimer } from "./QuestionTimer";
 import { useSettings } from "../context/SettingsContext";
 import { recordGameEnd, checkLiveAchievements, achievementProgress, achievementHint, ACHIEVEMENT_IDS, loadProfile } from "../utils/profile";
 import type { AchievementId } from "../utils/profile";
@@ -45,7 +44,7 @@ interface PlayerRoomProps {
 
 export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const { room, myId, myName, buzz, sendReaction, leaveRoom } = useRoom();
-  const { t, settings } = useSettings();
+  const { t } = useSettings();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [categoryModalId, setCategoryModalId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -535,10 +534,6 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                   <span className="font-display font-black text-warning-accent text-xl">
                     ${room.activeQuestion.value}
                   </span>
-                  <QuestionTimer
-                    seconds={room.activeQuestion.timer ?? settings.defaultTimer}
-                    openedAt={room.activeQuestion.openedAt}
-                  />
                 </div>
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">

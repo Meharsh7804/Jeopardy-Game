@@ -28,7 +28,6 @@ import { SettingsModal } from "./SettingsModal";
 import { StartCountdown } from "./StartCountdown";
 import { useSettings } from "../context/SettingsContext";
 import { QrJoinModal } from "./QrJoinModal";
-import { QuestionTimer } from "./QuestionTimer";
 import { AchievementToast } from "./AchievementToast";
 import { MediaViewer } from "./ui/MediaViewer";
 
@@ -70,7 +69,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     leaveRoom,
   } = useRoom();
   const { quizzes } = useQuizLibrary();
-  const { t, settings } = useSettings();
+  const { t } = useSettings();
 
   const [copied, setCopied] = useState(false);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -193,7 +192,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
   const handleOpenQuestion = async (q: Question, catName: string) => {
     soundManager.playReveal();
-    await openQuestion(q, catName, settings.defaultTimer);
+    await openQuestion(q, catName);
   };
 
   const categoryModalData = categoryModalId

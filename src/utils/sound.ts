@@ -15,7 +15,6 @@ interface ThemeCfg {
   correct: { notes: number[]; type: OscillatorType; step: number; dur: number };
   wrong: { type: OscillatorType; freqs: number[]; startFreq: number; endFreq: number; dur: number };
   tick: { type: OscillatorType; freq: number; dur: number };
-  urgentTick: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
   reveal: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
   pop: { type: OscillatorType; startFreq: number; endFreq: number; dur: number };
   winner: { chords: number[][]; type: OscillatorType; lastDur: number };
@@ -54,7 +53,6 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
     },
     wrong: { type: "triangle", freqs: [146.83, 110.0], startFreq: 146.83, endFreq: 75.0, dur: 0.6 },
     tick: { type: "sine", freq: 1000, dur: 0.03 },
-    urgentTick: { type: "square", startFreq: 1100, endFreq: 650, dur: 0.09 },
     reveal: { type: "triangle", startFreq: 293.66, endFreq: 880.0, dur: 0.4 },
     pop: { type: "sine", startFreq: 520, endFreq: 980, dur: 0.12 },
     winner: {
@@ -97,7 +95,6 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
     },
     wrong: { type: "square", freqs: [220, 165], startFreq: 220, endFreq: 60, dur: 0.4 },
     tick: { type: "square", freq: 1500, dur: 0.025 },
-    urgentTick: { type: "square", startFreq: 1600, endFreq: 700, dur: 0.06 },
     reveal: { type: "square", startFreq: 400, endFreq: 1200, dur: 0.25 },
     pop: { type: "square", startFreq: 660, endFreq: 1320, dur: 0.09 },
     winner: {
@@ -140,7 +137,6 @@ const THEMES: Record<SoundTheme, ThemeCfg> = {
     },
     wrong: { type: "sawtooth", freqs: [98, 87.31], startFreq: 98, endFreq: 62, dur: 0.7 },
     tick: { type: "sine", freq: 880, dur: 0.03 },
-    urgentTick: { type: "sawtooth", startFreq: 900, endFreq: 500, dur: 0.1 },
     reveal: { type: "sawtooth", startFreq: 262, endFreq: 880, dur: 0.5 },
     pop: { type: "triangle", startFreq: 440, endFreq: 880, dur: 0.12 },
     winner: {
@@ -298,17 +294,6 @@ class SoundManager {
     const t = THEMES[this.theme].tick;
     // High-pitched short woodblock tick
     this.playOscillator(t.type, [t.freq], t.dur);
-  }
-
-  playTimerUrgent() {
-    const t = THEMES[this.theme].urgentTick;
-    // Faster, descending warning blip for the last seconds of a question timer
-    this.playOscillator(
-      t.type,
-      [t.startFreq],
-      t.dur,
-      { startFreq: t.startFreq, endFreq: t.endFreq, type: 'linear' },
-    );
   }
 
   playIntro() {

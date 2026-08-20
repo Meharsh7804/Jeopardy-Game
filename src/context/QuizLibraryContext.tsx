@@ -20,7 +20,6 @@ const SETTINGS_KEY = 'jeopardy_settings';
 const DEFAULT_SETTINGS: GameSettings = {
   soundVolume: 0.5,
   isSoundMuted: false,
-  defaultTimer: 15,
   largeFontMode: false,
   animationSpeed: 'normal',
   language: 'en',

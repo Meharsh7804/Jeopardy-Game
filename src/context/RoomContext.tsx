@@ -101,7 +101,7 @@ interface RoomContextProps {
   // host actions
   createRoom: (quiz: Quiz, hostName: string) => Promise<string>;
   startGame: () => Promise<void>;
-  openQuestion: (question: Question, categoryName: string, defaultTimer?: number) => Promise<void>;
+  openQuestion: (question: Question, categoryName: string) => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
   splitPoints: (playerIds: string[]) => Promise<void>;
   adjustScore: (playerId: string, delta: number, reason: string) => Promise<void>;
@@ -260,7 +260,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   // This guarantees all clients transition simultaneously (server-authoritative)
   // and there are no stale buzzes from a prior question.
   const openQuestion = useCallback(
-    async (question: Question, categoryName: string, defaultTimer?: number) => {
+    async (question: Question, categoryName: string) => {
       if (!roomCode) return;
       const aq: Partial<ActiveQuestion> = {
         questionId: question.id,
@@ -278,8 +278,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       // object URLs from an old upload method — they can never load on players' devices.
       if (question.mediaUrl && !question.mediaUrl.startsWith("blob:")) aq.mediaUrl = question.mediaUrl;
       if (question.isDailyDouble) aq.isDailyDouble = question.isDailyDouble;
-      // Per-question override wins; otherwise the host's configured default.
-      aq.timer = question.timer ?? defaultTimer ?? 15;
       // Write activeQuestion, clear buzzes, and flip phase atomically.
       // Every subscriber (host + all players) reacts to the same snapshot.
       await update(ref(db, `rooms/${roomCode}`), {
