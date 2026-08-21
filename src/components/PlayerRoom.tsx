@@ -262,7 +262,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
   const players = Object.values(room.players)
     .filter((p) => !p.isHost)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || (a.joinedAt ?? 0) - (b.joinedAt ?? 0));
 
   return (
     <div className="min-h-screen flex flex-col select-none bg-primary-bg relative overflow-hidden">
@@ -552,26 +552,63 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
               {!hasBuzzed ? (
                 <div className="flex flex-col items-center gap-6 mt-8">
-                  <motion.button
-                    onClick={handleBuzz}
-                    disabled={hasBuzzed}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="w-56 h-56 rounded-full font-display font-black text-4xl tracking-wider transition-all duration-150 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-danger-accent to-rose-700 border-8 border-white/10 text-white shadow-[0_0_50px_rgba(244,63,94,0.5)] cursor-pointer relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <Zap className="w-14 h-14 mb-1" />
-                    {t('buzz')}
-                  </motion.button>
+                  {/* Pulsing ring animations */}
+                  <div className="relative">
+                    <motion.div
+                      animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0, 0.3] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      className="absolute inset-0 w-56 h-56 rounded-full border-2 border-danger-accent/40"
+                    />
+                    <motion.div
+                      animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0, 0.2] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+                      className="absolute inset-0 w-56 h-56 rounded-full border border-danger-accent/20"
+                    />
+                    <motion.button
+                      onClick={handleBuzz}
+                      disabled={hasBuzzed}
+                      whileHover={{ scale: 1.08 }}
+                      whileTap={{ scale: 0.88 }}
+                      animate={{ 
+                        boxShadow: [
+                          "0 0 50px rgba(244,63,94,0.5), 0 0 100px rgba(244,63,94,0.3)",
+                          "0 0 80px rgba(244,63,94,0.7), 0 0 120px rgba(244,63,94,0.4)",
+                          "0 0 50px rgba(244,63,94,0.5), 0 0 100px rgba(244,63,94,0.3)",
+                        ]
+                      }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                      className="relative w-56 h-56 rounded-full font-display font-black text-4xl tracking-wider flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-danger-accent via-rose-600 to-red-700 border-8 border-white/20 text-white cursor-pointer overflow-hidden group"
+                    >
+                      {/* Animated shine sweep */}
+                      <motion.div
+                        animate={{ x: ["-100%", "100%"] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", repeatDelay: 1 }}
+                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
+                      />
+                      <Zap className="w-14 h-14 mb-1 relative z-10 drop-shadow-lg" />
+                      <span className="relative z-10">{t('buzz')}</span>
+                    </motion.button>
+                  </div>
                   <p className="text-sm font-bold text-text-muted uppercase tracking-widest animate-pulse">
                     {t('beFirstToBuzz')}
                   </p>
                 </div>
               ) : (
-                <div className="glass-panel p-6 rounded-3xl space-y-5 mt-4 shadow-xl">
-                  <div className="flex items-center justify-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10 flex-col sm:flex-row">
+                <div className="glass-panel p-6 rounded-3xl space-y-5 mt-4 shadow-xl relative overflow-hidden">
+                  {/* Flash effect on buzz confirmation */}
+                  <motion.div
+                    initial={{ opacity: 0.6, x: "-100%" }}
+                    animate={{ opacity: 0, x: "100%" }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-warning-accent/30 to-transparent pointer-events-none"
+                  />
+                  <div className="flex items-center justify-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10 flex-col sm:flex-row relative z-10">
                      <div className="flex items-center gap-3">
-                       <div className="w-3 h-3 rounded-full bg-warning-accent animate-pulse" />
+                       <motion.div 
+                         animate={{ scale: [1, 1.2, 1] }}
+                         transition={{ duration: 1, repeat: Infinity }}
+                         className="w-3 h-3 rounded-full bg-warning-accent" 
+                       />
                        <p className="text-sm font-bold text-white uppercase tracking-widest">{t('youBuzzedIn')}</p>
                      </div>
                      <div className="flex items-center gap-2 sm:pl-4 sm:border-l sm:border-white/10">

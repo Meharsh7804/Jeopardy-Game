@@ -60,7 +60,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   onEditQuiz,
 }) => {
   const { createRoom, joinRoom, loading, error, myId } = useRoom();
-  const { quizzes } = useQuizLibrary();
+  const { quizzes, isSynced } = useQuizLibrary();
   const { t } = useSettings();
   const reduce = !!useReducedMotion();
 
@@ -74,6 +74,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   const [playerName, setPlayerName] = useState(() => loadProfile().name || "");
   const [roomCode, setRoomCode] = useState("");
   const [localError, setLocalError] = useState("");
+  const [quizSearch, setQuizSearch] = useState("");
   const profile = loadProfile();
 
   const matches = loadMatchHistory();
@@ -89,6 +90,14 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
 
   const selectedQuiz = quizzes.find((q) => q.id === selectedQuizId) ?? quizzes[0];
 
+  const filteredQuizzes = quizSearch.trim()
+    ? quizzes.filter(
+        (q) =>
+          q.title.toLowerCase().includes(quizSearch.toLowerCase()) ||
+          q.description?.toLowerCase().includes(quizSearch.toLowerCase()),
+      )
+    : quizzes;
+
   // QR join: prefill the room code when arriving via /?join=CODE
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -99,6 +108,13 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
+
+  // Sync selected quiz when the library updates (e.g. after Firebase resolves)
+  useEffect(() => {
+    if (quizzes.length > 0 && !quizzes.find((q) => q.id === selectedQuizId)) {
+      setSelectedQuizId(quizzes[0].id);
+    }
+  }, [quizzes, selectedQuizId]);
 
   const handleHost = async () => {
     setLocalError("");
@@ -514,48 +530,88 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                     {t("newQuiz")}
                   </button>
                 </div>
-                <div className="space-y-2 max-h-44 overflow-y-auto pr-1 custom-scrollbar">
-                  {quizzes.map((q) => (
-                    <div
-                      key={q.id}
-                      className={`group flex items-center gap-2 p-3.5 rounded-xl border transition-all ${
-                        selectedQuizId === q.id
-                          ? "bg-primary-accent/20 border-primary-accent/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]"
-                          : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10"
-                      }`}
-                    >
+                {quizzes.length > 3 && (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder={t("searchQuizzes") || "Search quizzes..."}
+                      value={quizSearch}
+                      onChange={(e) => setQuizSearch(e.target.value)}
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-primary-accent/50 transition-all placeholder:text-text-muted/40"
+                    />
+                    {quizSearch && (
                       <button
-                        onClick={() => setSelectedQuizId(q.id)}
-                        className="flex-1 text-left min-w-0"
+                        onClick={() => setQuizSearch("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-text-muted hover:text-white"
                       >
-                        <p
-                          className={`font-bold text-sm truncate ${
-                            selectedQuizId === q.id ? "text-primary-accent" : "text-white"
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="space-y-1 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                  {!isSynced ? (
+                    <div className="space-y-1">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="flex items-center gap-2 p-2.5 rounded-lg border border-white/5 bg-white/[0.03] animate-pulse">
+                          <div className="flex-1 space-y-1.5">
+                            <div className="h-3 bg-white/10 rounded w-2/3" />
+                            <div className="h-2 bg-white/5 rounded w-1/2" />
+                          </div>
+                          <div className="w-6 h-6 rounded bg-white/5" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      {filteredQuizzes.map((q) => (
+                        <div
+                          key={q.id}
+                          className={`group flex items-center gap-2 p-2.5 rounded-lg border transition-all ${
+                            selectedQuizId === q.id
+                              ? "bg-primary-accent/20 border-primary-accent/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]"
+                              : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10"
                           }`}
                         >
-                          {q.title}
-                        </p>
-                        <p className="text-xs text-text-muted mt-0.5 truncate">{q.description}</p>
-                      </button>
-                      <button
-                        onClick={() => onEditQuiz(q)}
-                        title={t("edit")}
-                        className="shrink-0 p-2 rounded-lg bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  {quizzes.length === 0 && (
-                    <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
-                      <p className="text-sm text-text-muted mb-2">{t("needQuizToHost")}</p>
-                      <button
-                        onClick={onCreateQuiz}
-                        className="text-xs text-primary-accent hover:underline font-bold"
-                      >
-                        {t("createOneNow")}
-                      </button>
-                    </div>
+                          <button
+                            onClick={() => setSelectedQuizId(q.id)}
+                            className="flex-1 text-left min-w-0"
+                          >
+                            <p
+                              className={`font-bold text-xs truncate ${
+                                selectedQuizId === q.id ? "text-primary-accent" : "text-white"
+                              }`}
+                            >
+                              {q.title}
+                            </p>
+                            <p className="text-[10px] text-text-muted mt-0.5 truncate">{q.description}</p>
+                          </button>
+                          <button
+                            onClick={() => onEditQuiz(q)}
+                            title={t("edit")}
+                            className="shrink-0 p-1.5 rounded-md bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {filteredQuizzes.length === 0 && quizzes.length > 0 && (
+                        <div className="text-center py-4 border border-dashed border-white/10 rounded-lg">
+                          <p className="text-xs text-text-muted">{t("noResults") || "No matching quizzes"}</p>
+                        </div>
+                      )}
+                      {quizzes.length === 0 && (
+                        <div className="text-center py-4 border border-dashed border-white/10 rounded-lg">
+                          <p className="text-xs text-text-muted mb-1">{t("needQuizToHost")}</p>
+                          <button
+                            onClick={onCreateQuiz}
+                            className="text-[10px] text-primary-accent hover:underline font-bold"
+                          >
+                            {t("createOneNow")}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

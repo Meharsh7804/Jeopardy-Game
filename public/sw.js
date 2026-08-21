@@ -1,4 +1,4 @@
-const CACHE = "bwq-v1";
+const CACHE = "bwq-v2";
 const CORE = ["/", "/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -21,18 +21,45 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      if (hit) return hit;
-      return fetch(e.request)
+
+  const url = new URL(e.request.url);
+  const isSameOrigin = url.origin === self.location.origin;
+
+  // HTML navigations: network-first so deploys are never stale
+  if (isSameOrigin && e.request.mode === "navigate") {
+    e.respondWith(
+      fetch(e.request)
         .then((res) => {
           const copy = res.clone();
-          if (res.ok && new URL(e.request.url).origin === self.location.origin) {
-            caches.open(CACHE).then((c) => c.put(e.request, copy));
-          }
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
           return res;
         })
-        .catch(() => hit);
-    }),
+        .catch(() => caches.match(e.request)),
+    );
+    return;
+  }
+
+  // Static assets (same-origin): cache-first with network fallback
+  if (isSameOrigin) {
+    e.respondWith(
+      caches.match(e.request).then((hit) => {
+        if (hit) return hit;
+        return fetch(e.request)
+          .then((res) => {
+            const copy = res.clone();
+            if (res.ok) {
+              caches.open(CACHE).then((c) => c.put(e.request, copy));
+            }
+            return res;
+          })
+          .catch(() => hit);
+      }),
+    );
+    return;
+  }
+
+  // Cross-origin requests: network-first
+  e.respondWith(
+    fetch(e.request).catch(() => caches.match(e.request)),
   );
 });

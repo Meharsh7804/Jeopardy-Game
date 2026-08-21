@@ -107,7 +107,12 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // ── Subscribe to the shared quiz library in Firebase ──────────────────────
   useEffect(() => {
-    if (!isFirebaseConfigValid()) return; // stay on localStorage-only mode
+    if (!isFirebaseConfigValid()) {
+      // Local-only mode: no Firebase configured, mark as synced immediately
+      // so consumers don't show a loading spinner forever.
+      setIsSynced(true);
+      return;
+    }
 
     const libRef = ref(db, 'quizLibrary');
     const unsub = onValue(
@@ -131,7 +136,7 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
       },
       () => {
         // Firebase unreachable — fall back to whatever's cached locally.
-        setIsSynced(false);
+        setIsSynced(true);
       },
     );
 

@@ -170,7 +170,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
   if (!room) return null;
 
-  const players = Object.values(room.players).sort((a, b) => b.score - a.score);
+  const players = Object.values(room.players).sort((a, b) => b.score - a.score || (a.joinedAt ?? 0) - (b.joinedAt ?? 0));
   const gamePlayers = players.filter((p) => !p.isHost);
   const sortedBuzzes = Object.entries(room.buzzes || {}).sort((a, b) => a[1] - b[1]);
 
@@ -520,13 +520,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     {gamePlayers.map((p, i) => (
                       <motion.div
                         key={p.id}
-                        layout
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, scale: 0.9 }}
                         transition={{
                           type: "spring",
-                          stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                          stiffness: 1000,
                           damping: 50,
                           mass: 0.8,
                         }}
@@ -567,7 +566,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
               exit={{ opacity: 0, scale: 1.05 }}
               transition={{
                 type: "spring",
-                stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                stiffness: 1000,
                 damping: 50,
                 mass: 0.8,
               }}
@@ -575,7 +574,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             >
               {/* Question Card */}
               <div className="flex-1 w-full space-y-6">
-                <motion.div layoutId={`q-${room.activeQuestion.questionId}`} className="glass-panel-heavy p-10 md:p-14 rounded-[2.5rem] text-center space-y-8 relative shadow-2xl border border-white/10">
+                <div className="relative">
+                  {/* Dramatic flash overlay on question open */}
+                  <motion.div
+                    key={`flash-${room.activeQuestion.questionId}`}
+                    initial={{ opacity: 0.8 }}
+                    animate={{ opacity: 0 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                    className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-warning-accent/40 via-primary-accent/30 to-secondary-accent/40 pointer-events-none z-20"
+                  />
+                  {/* Pulsing glow ring */}
+                  <motion.div
+                    key={`glow-${room.activeQuestion.questionId}`}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: [0, 0.6, 0], scale: [0.95, 1.02, 1] }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className="absolute -inset-1 rounded-[2.5rem] bg-gradient-to-r from-warning-accent via-primary-accent to-secondary-accent pointer-events-none z-0 blur-sm"
+                  />
+                  <motion.div layoutId={`q-${room.activeQuestion.questionId}`} className="relative z-10 glass-panel-heavy p-10 md:p-14 rounded-[2.5rem] text-center space-y-8 shadow-2xl border border-white/10 overflow-hidden">
+                    {/* Top accent bar */}
+                    <motion.div
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: 0.4, delay: 0.2 }}
+                      className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-warning-accent via-primary-accent to-secondary-accent origin-left"
+                    />
                   <div className="flex items-center justify-center gap-4">
                     <span className="px-5 py-2 rounded-full bg-black/40 border border-white/10 text-xs font-bold text-text-muted uppercase tracking-widest shadow-inner">
                       {room.activeQuestion.categoryName}
@@ -634,7 +657,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                       </p>
                     </motion.div>
                   )}
-                </motion.div>
+                  </motion.div>
+                </div>
 
                 {/* Host Action Buttons below question */}
                 <div className="flex flex-col sm:flex-row gap-4">
@@ -729,23 +753,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                            const fast = react !== null && react <= 1000;
                            return (
                              <motion.div
-                               layout
                                initial={{ opacity: 0, x: 20, scale: 0.9 }}
                                animate={{ opacity: 1, x: 0, scale: 1 }}
                                exit={{ opacity: 0, scale: 0.8 }}
                                transition={{
                                 type: "spring",
-                                stiffness: 1000,  // High stiffness = instant spring (no bounce)
+                                stiffness: 1000,
                                 damping: 50,
                                 mass: 0.8,
                                }}
                                key={pId}
                                className={`flex flex-col gap-3 p-4 rounded-2xl border transition-all ${
                                  isFirst 
-                                   ? "bg-gradient-to-br from-warning-accent/20 to-warning-accent/5 border-warning-accent/50 shadow-[0_0_25px_rgba(245,158,11,0.2)] scale-[1.02] z-10 relative" 
+                                   ? "bg-gradient-to-br from-warning-accent/20 to-warning-accent/5 border-warning-accent/50 shadow-[0_0_25px_rgba(245,158,11,0.2)] scale-[1.02] z-10 relative overflow-hidden" 
                                    : "bg-white/5 border-white/5 opacity-70 scale-95"
                                }`}
                              >
+                               {/* Flash effect for first buzzer */}
+                               {isFirst && (
+                                 <motion.div
+                                   initial={{ opacity: 0.8, x: "-100%" }}
+                                   animate={{ opacity: 0, x: "100%" }}
+                                   transition={{ duration: 0.5, ease: "easeOut" }}
+                                   className="absolute inset-0 bg-gradient-to-r from-transparent via-warning-accent/30 to-transparent pointer-events-none"
+                                 />
+                               )}
                                <div className="flex items-center gap-3">
                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 shadow-inner ${isFirst ? "bg-warning-accent text-black" : "bg-black/50 text-text-muted border border-white/10"}`}>
                                    {idx + 1}
@@ -782,23 +814,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                    className="flex flex-col gap-2 pt-2 border-t border-warning-accent/20"
                                  >
                                    {fast && (
-                                     <p className="text-[10px] font-black text-warning-accent uppercase tracking-widest text-center">
+                                     <motion.p 
+                                       initial={{ opacity: 0, y: -5 }}
+                                       animate={{ opacity: 1, y: 0 }}
+                                       className="text-[10px] font-black text-warning-accent uppercase tracking-widest text-center"
+                                     >
                                        ⚡ Fast buzz — +${Math.max(1, Math.round((room.activeQuestion?.value ?? 0) * 0.1))} bonus on correct
-                                     </p>
+                                     </motion.p>
                                    )}
                                    <div className="flex gap-2">
-                                     <button
+                                     <motion.button
+                                       whileHover={{ scale: 1.05, y: -2 }}
+                                       whileTap={{ scale: 0.95 }}
                                        onClick={() => handleJudge(true)}
-                                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-success-accent text-white hover:bg-emerald-400 transition-all shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 active:translate-y-0"
+                                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-success-accent text-white font-bold shadow-[0_4px_20px_rgba(16,185,129,0.4)] hover:shadow-[0_6px_30px_rgba(16,185,129,0.6)] transition-shadow"
                                      >
-                                       <Check className="w-5 h-5 font-bold" /> <span className="font-bold text-sm">{t('correct')}</span>
-                                     </button>
-                                     <button
+                                       <Check className="w-5 h-5" /> <span className="text-sm">{t('correct')}</span>
+                                     </motion.button>
+                                     <motion.button
+                                       whileHover={{ scale: 1.05, y: -2 }}
+                                       whileTap={{ scale: 0.95 }}
                                        onClick={() => handleJudge(false)}
-                                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-danger-accent text-white hover:bg-rose-400 transition-all shadow-[0_4px_15px_rgba(244,63,94,0.3)] hover:-translate-y-0.5 active:translate-y-0"
+                                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-danger-accent text-white font-bold shadow-[0_4px_20px_rgba(244,63,94,0.4)] hover:shadow-[0_6px_30px_rgba(244,63,94,0.6)] transition-shadow"
                                      >
-                                       <X className="w-5 h-5 font-bold" /> <span className="font-bold text-sm">{t('wrong')}</span>
-                                     </button>
+                                       <X className="w-5 h-5" /> <span className="text-sm">{t('wrong')}</span>
+                                     </motion.button>
                                    </div>
                                  </motion.div>
                                )}

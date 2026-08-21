@@ -1,0 +1,99 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Premium Themes</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#050505;color:#f8fafc;padding:40px 20px}
+h1{font-family:'Playfair Display',serif;font-size:2.4rem;font-weight:900;text-align:center;margin-bottom:6px;letter-spacing:-.03em}
+.sub{text-align:center;color:#666;margin-bottom:40px;font-size:.85rem;font-weight:300;letter-spacing:.05em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:1100px;margin:0 auto}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.card{border-radius:20px;overflow:hidden;padding:32px;min-height:560px;cursor:pointer;border:1px solid rgba(255,255,255,.06);transition:all .4s cubic-bezier(.4,0,.2,1);position:relative}
+.card:hover{transform:translateY(-6px);border-color:rgba(255,255,255,.12)}
+.card.active{border-color:rgba(255,255,255,.2);box-shadow:0 20px 60px -20px var(--glow)}
+.card .label{font-size:.55rem;font-weight:600;text-transform:uppercase;letter-spacing:.2em;opacity:.4;margin-bottom:10px}
+.card .name{font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:900;margin-bottom:6px}
+.card .desc{font-size:.7rem;font-weight:300;opacity:.5;margin-bottom:20px;line-height:1.6}
+.divider{height:1px;background:rgba(255,255,255,.06);margin:16px 0}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:16px;border-radius:12px;overflow:hidden}
+.tile{padding:14px 8px;text-align:center;font-weight:700;font-size:.75rem;letter-spacing:.02em}
+.buzz{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-weight:600;font-size:.5rem;letter-spacing:.15em;text-transform:uppercase}
+.leaderboard{display:flex;flex-direction:column;gap:4px}
+.row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px}
+.row .pos{font-weight:700;font-size:.6rem;width:16px;opacity:.5}
+.row .avatar{width:28px;height:28px;border-radius:50%}
+.row .player{font-weight:600;font-size:.75rem;flex:1}
+.row .pts{font-weight:800;font-size:.8rem;letter-spacing:.02em}
+.btn{padding:14px;border-radius:12px;text-align:center;font-weight:700;font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;margin-top:16px}
+</style>
+</head>
+<body>
+<h1>Premium & Elemental</h1>
+<p class="sub">Refined. Modern. Inspired by nature's power.</p>
+<div class="grid" id="g"></div>
+<script>
+var themes=[
+{
+  id:"obsidian", name:"Obsidian", label:"EARTH / FIRE",
+  desc:"Volcanic glass meets molten gold. Raw power refined into luxury.",
+  glow:"rgba(180,140,60,.15)",
+  bg:"linear-gradient(160deg,#0a0808,#12080a)", bgSolid:"#0a0808",
+  accent:"#c9a84c", accentDim:"#8a6a2a", text:"#f0e8d8", textDim:"#6a5a3a",
+  tileBg:"#14100c", tileBorder:"#2a1e14", tileText:"#c9a84c",
+  rowBg:"rgba(201,168,76,.06)", rowBorder:"rgba(201,168,76,.1)",
+  buzzBg:"linear-gradient(135deg,#c9a84c,#8a6a2a)", buzzText:"#0a0808",
+  btnBg:"linear-gradient(135deg,#c9a84c,#8a6a2a)", btnText:"#0a0808",
+  avatar:"linear-gradient(135deg,#c9a84c,#8a6a2a)", avatarDim:"#2a1e14",
+},
+{
+  id:"glacier", name:"Glacier", label:"WATER / ICE",
+  desc:"Deep ocean trenches and ancient ice. Calm surface, infinite depth.",
+  glow:"rgba(80,160,220,.12)",
+  bg:"linear-gradient(160deg,#060a10,#080e18)", bgSolid:"#060a10",
+  accent:"#4da8da", accentDim:"#2a6888", text:"#e0f0f8", textDim:"#3a5a6a",
+  tileBg:"#0c1420", tileBorder:"#1a2a3a", tileText:"#4da8da",
+  rowBg:"rgba(77,168,218,.05)", rowBorder:"rgba(77,168,218,.08)",
+  buzzBg:"linear-gradient(135deg,#4da8da,#2a6888)", buzzText:"#060a10",
+  btnBg:"linear-gradient(135deg,#4da8da,#2a6888)", btnText:"#060a10",
+  avatar:"linear-gradient(135deg,#4da8da,#2a6888)", avatarDim:"#1a2a3a",
+},
+{
+  id:"ember", name:"Ember", label:"FIRE / EARTH",
+  desc:"The last glow before dawn. Warmth that lingers, elegance that endures.",
+  glow:"rgba(200,100,50,.12)",
+  bg:"linear-gradient(160deg,#0c0606,#140a08)", bgSolid:"#0c0606",
+  accent:"#d4714a", accentDim:"#8a4030", text:"#f8e8e0", textDim:"#6a4a3a",
+  tileBg:"#160c0a", tileBorder:"#2a1812", tileText:"#d4714a",
+  rowBg:"rgba(212,113,74,.05)", rowBorder:"rgba(212,113,74,.08)",
+  buzzBg:"linear-gradient(135deg,#d4714a,#8a4030)", buzzText:"#f8e8e0",
+  btnBg:"linear-gradient(135deg,#d4714a,#8a4030)", btnText:"#f8e8e0",
+  avatar:"linear-gradient(135deg,#d4714a,#8a4030)", avatarDim:"#2a1812",
+},
+{
+  id:"forest", name:"Canopy", label:"WOOD / EARTH",
+  desc:"Ancient forests and morning mist. Quiet strength, organic luxury.",
+  glow:"rgba(80,140,80,.1)",
+  bg:"linear-gradient(160deg,#060a08,#0a100c)", bgSolid:"#060a08",
+  accent:"#6a9a6a", accentDim:"#3a6a3a", text:"#e8f0e8", textDim:"#4a6a4a",
+  tileBg:"#0c1410", tileBorder:"#1a2a1e", tileText:"#6a9a6a",
+  rowBg:"rgba(106,154,106,.05)", rowBorder:"rgba(106,154,106,.08)",
+  buzzBg:"linear-gradient(135deg,#6a9a6a,#3a6a3a)", buzzText:"#e8f0e8",
+  btnBg:"linear-gradient(135deg,#6a9a6a,#3a6a3a)", btnText:"#e8f0e8",
+  avatar:"linear-gradient(135deg,#6a9a6a,#3a6a3a)", avatarDim:"#1a2a1e",
+},
+];
+var g=document.getElementById("g");
+themes.forEach(function(t){
+  var el=document.createElement("div");el.className="card";
+  el.style.background=t.bg;el.style.setProperty("--glow",t.glow);
+  el.innerHTML='<div class="label" style="color:'+t.accent+'">'+t.label+'</div><div class="name" style="color:'+t.text+'">'+t.name+'</div><div class="desc" style="color:'+t.textDim+'">'+t.desc+'</div><div class="divider" style="background:linear-gradient(90deg,'+t.accentDim+'44,transparent)"></div><div class="tiles">'+[100,200,300,400,500,600,700,800,1000].map(function(v){return '<div class="tile" style="background:'+t.tileBg+';border:1px solid '+t.tileBorder+';color:'+t.tileText+'">'+v+'</div>'}).join("")+'</div><div class="buzz" style="background:'+t.buzzBg+';color:'+t.buzzText+';border:1px solid '+t.accentDim+'">BUZZ</div><div class="leaderboard"><div class="row" style="background:'+t.rowBg+';border:1px solid '+t.rowBorder+'"><span class="pos" style="color:'+t.accent+'">1</span><div class="avatar" style="background:'+t.avatar+'"></div><span class="player" style="color:'+t.text+'">Alex</span><span class="pts" style="color:'+t.accent+'">2,400</span></div><div class="row" style="background:transparent;border:1px solid rgba(255,255,255,.03)"><span class="pos">2</span><div class="avatar" style="background:'+t.avatarDim+'"></div><span class="player" style="color:'+t.textDim+'">Jordan</span><span class="pts" style="color:'+t.textDim+'">1,800</span></div></div><div class="btn" style="background:'+t.btnBg+';color:'+t.btnText+'">Create Game</div>';
+  el.onclick=function(){document.querySelectorAll(".card").forEach(function(x){x.classList.remove("active")});el.classList.add("active");window._sel=t.id};
+  g.appendChild(el);
+});
+</script>
+</body>
+</html>

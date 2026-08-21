@@ -278,7 +278,10 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           {players.length >= 2 ? (
             /* Avatars sit ABOVE the podium block so they're never clipped */
             <div className="flex flex-col gap-0">
-              {/* Avatar row — floats above the colored podium columns */}
+              {/* Avatar row — floats above the colored podium columns.
+                  Each column is padded-bottom by the difference between the
+                  tallest podium (1st = h-64 / 256px) and its own podium height
+                  so avatars visually sit right on top of their column. */}
               <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end mb-0">
                 {podiumOrder.map((p, idx) => {
                   const rank = podiumOrder.length === 3 ? [2, 1, 3][idx] : idx + 1;
@@ -291,6 +294,10 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                       : rank === 2
                       ? "[transform:rotate(-6deg)]" // 2nd tilts left
                       : "[transform:rotate(6deg)]";  // 3rd tilts right
+                  // Push avatar down so it sits on top of its podium column.
+                  // 1st place (h-64 = 16rem) needs no padding; 2nd (h-44 = 11rem)
+                  // needs 5rem; 3rd (h-36 = 9rem) needs 7rem.
+                  const podiumPad: Record<number, string> = { 1: "pb-0", 2: "pb-5", 3: "pb-7" };
 
                   return (
                     <motion.div
@@ -304,7 +311,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                         mass: 0.8,
                         delay: 0.45 + 0.18 * idx,
                       }}
-                      className="flex flex-col items-center gap-1.5 pb-2"
+                      className={`flex flex-col items-center gap-1.5 ${podiumPad[rank] ?? "pb-0"}`}
                     >
                       {rank === 1 && (
                         <motion.div
