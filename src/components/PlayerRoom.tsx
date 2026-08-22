@@ -438,15 +438,10 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           {room.phase === "lobby" && (
             <motion.div
               key="lobby"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 25,
-                mass: 0.8,
-              }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
               className="flex flex-col items-center justify-center gap-6 py-12 text-center w-full"
             >
               <div className="relative">
@@ -516,15 +511,10 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           {room.phase === "board" && (
             <motion.div
               key="board"
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 25,
-                mass: 0.8,
-              }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
               className="w-full space-y-8"
             >
               <div className="glass-panel p-4 rounded-2xl text-center border-white/10 shadow-lg">
@@ -631,15 +621,10 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           {room.phase === "buzzing" && room.activeQuestion && (
             <motion.div
               key="buzzing"
-              initial={{ opacity: 0, scale: 0.95, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 25,
-                mass: 0.8,
-              }}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -14 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className="w-full max-w-2xl mx-auto space-y-6"
             >
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-5 relative shadow-2xl border border-white/10">
@@ -834,15 +819,10 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           {room.phase === "judging" && room.activeQuestion && (
             <motion.div
               key="judging"
-              initial={{ opacity: 0, scale: 0.95, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 25,
-                mass: 0.8,
-              }}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -14 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className="w-full max-w-2xl mx-auto space-y-6"
             >
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-5 relative shadow-2xl border border-white/10">
@@ -880,15 +860,10 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           {room.phase === "answer" && room.activeQuestion && (
             <motion.div
               key="answer"
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 25,
-                mass: 0.8,
-              }}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -14 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className="w-full max-w-2xl mx-auto space-y-6"
             >
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10 relative">
@@ -924,16 +899,25 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
           {/* ENDED — game-show results with podium, stats & confetti */}
           {room.phase === "ended" && (
-            <ResultsScreen
-              players={players}
-              myId={myId}
-              onExit={handleLeave}
-              exitLabel={t('exitGame')}
-              waitingNote={t('waitingForRematch')}
-              myAwards={myAwards}
-              myHints={myHints}
-              allUnlocked={allUnlocked}
-            />
+            <motion.div
+              key="results"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="w-full"
+            >
+              <ResultsScreen
+                players={players}
+                myId={myId}
+                onExit={handleLeave}
+                exitLabel={t('exitGame')}
+                waitingNote={t('waitingForRematch')}
+                myAwards={myAwards}
+                myHints={myHints}
+                allUnlocked={allUnlocked}
+              />
+            </motion.div>
           )}
         </AnimatePresence>
       </main>
@@ -953,7 +937,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
               className="glass-panel-heavy rounded-3xl p-8 max-w-md w-full space-y-4 relative border border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.5)]"
               onClick={(e) => e.stopPropagation()}
             >

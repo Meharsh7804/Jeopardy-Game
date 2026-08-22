@@ -405,10 +405,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
           {room.phase === "lobby" && (
             <motion.div
               key="lobby"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{type: "spring",stiffness: 300,damping: 25,mass: 0.8}}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
               className="p-8 sm:p-12 w-full max-w-7xl mx-auto flex flex-col items-center justify-center min-h-[80vh] gap-10"
             >
               <div className="text-center space-y-4">
@@ -541,15 +541,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
           {room.phase === "board" && quiz && (
             <motion.div
               key="board"
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{
-                  type: "spring",
-                  stiffness: 300,
-                  damping: 25,
-                  mass: 0.8,
-                }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
               className="p-4 md:p-6 max-w-7xl mx-auto w-full flex flex-col xl:flex-row gap-6 items-start"
             >
               <div className="flex-1 w-full space-y-4">
@@ -596,7 +591,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                       const done = !!room.completedQuestions?.[q.id];
                       return (
                         <motion.button
-                          layoutId={`q-${q.id}`}
                           key={q.id}
                           disabled={done}
                           onClick={() => handleOpenQuestion(q, cat.name)}
@@ -680,15 +674,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
           {["buzzing", "answer"].includes(room.phase) && room.activeQuestion && (
             <motion.div
               key="question-screen"
-              initial={{ opacity: 0, scale: 0.95, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{
-                type: "spring",
-                stiffness: 1000,
-                damping: 50,
-                mass: 0.8,
-              }}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -14 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className="p-6 md:p-8 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-8 items-start"
             >
               {/* Question Card */}
@@ -710,7 +699,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     transition={{ duration: 0.8, ease: "easeOut" }}
                     className="absolute -inset-1 rounded-[2.5rem] bg-gradient-to-r from-warning-accent via-primary-accent to-secondary-accent pointer-events-none z-0 blur-sm"
                   />
-                  <motion.div layoutId={`q-${room.activeQuestion.questionId}`} className="relative z-10 glass-panel-heavy p-10 md:p-14 rounded-[2.5rem] text-center space-y-8 shadow-2xl border border-white/10 overflow-hidden">
+                  <div className="relative z-10 glass-panel-heavy p-10 md:p-14 rounded-[2.5rem] text-center space-y-8 shadow-2xl border border-white/10 overflow-hidden">
                     {/* Top accent bar */}
                     <motion.div
                       initial={{ scaleX: 0 }}
@@ -776,7 +765,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                       </p>
                     </motion.div>
                   )}
-                  </motion.div>
+                  </div>
                 </div>
 
                 {/* Host Action Buttons below question */}
@@ -985,13 +974,22 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
           {/* ENDED PHASE — game-show results with podium, stats & rematch */}
           {room.phase === "ended" && (
-            <ResultsScreen
-              players={gamePlayers}
-              myId={myId}
-              onPlayAgain={handlePlayAgain}
-              onExit={handleLeave}
-              exitLabel={t('returnToLobby')}
-            />
+            <motion.div
+              key="results"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="w-full"
+            >
+              <ResultsScreen
+                players={gamePlayers}
+                myId={myId}
+                onPlayAgain={handlePlayAgain}
+                onExit={handleLeave}
+                exitLabel={t('returnToLobby')}
+              />
+            </motion.div>
           )}
         </AnimatePresence>
       </main>
