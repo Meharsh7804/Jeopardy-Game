@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ScoreHistoryEntry } from "../types/jeopardy";
+import { soundManager } from "../utils/sound";
 
 interface ScorePopupProps {
   entries: Record<string, ScoreHistoryEntry> | undefined;
@@ -62,6 +63,8 @@ export const ScorePopup: React.FC<ScorePopupProps> = ({ entries, playerId }) => 
 
     // Only show the most-recent change for this player.
     const latest = newForMe.sort((a, b) => b.timestamp - a.timestamp)[0];
+    if (latest.changeAmount >= 0) soundManager.playScoreUp();
+    else soundManager.playScoreDown();
     setActive([latest]);
     window.setTimeout(() => {
       setActive((prev) => prev.filter((x) => x.id !== latest.id));

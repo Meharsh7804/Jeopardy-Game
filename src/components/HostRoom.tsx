@@ -30,10 +30,22 @@ import { useSettings } from "../context/SettingsContext";
 import { QrJoinModal } from "./QrJoinModal";
 import { AchievementToast } from "./AchievementToast";
 import { MediaViewer } from "./ui/MediaViewer";
+import { useScoreCelebrations } from "../delight/celebrate";
+import { momentBus } from "../delight/moments";
+import { useRoomCodeWordEgg } from "../delight/gameEggs";
+import { useIdleNudge } from "../delight/watch";
 
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
 });
+
+const SCAN_LINES = [
+  "Scanning the horizon…",
+  "A carrier pigeon is en route…",
+  "Listening for footsteps…",
+  "The map is almost ready…",
+  "Charting the unknown…",
+];
 
 const FUN_FACTS = [
   "Did you know? Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.",
@@ -77,17 +89,23 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   const [splitSelected, setSplitSelected] = useState<string[]>([]);
   const [showSplit, setShowSplit] = useState(false);
   const [factIndex, setFactIndex] = useState(0);
+  const [scanIndex, setScanIndex] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const knownBuzzCount = useRef<number | null>(null);
+  const decodeShown = useRef(false);
 
   useEffect(() => {
     if (room?.phase !== "lobby") return;
     const interval = setInterval(() => {
       setFactIndex((prev) => (prev + 1) % FUN_FACTS.length);
     }, 8000);
-    return () => clearInterval(interval);
+    const scan = setInterval(() => setScanIndex((prev) => (prev + 1) % SCAN_LINES.length), 2600);
+    return () => {
+      clearInterval(interval);
+      clearInterval(scan);
+    };
   }, [room?.phase]);
 
   useEffect(() => {
@@ -122,9 +140,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     async (correct: boolean) => {
       if (correct) soundManager.playCorrect();
       else soundManager.playWrong();
+      // High-value hauls get a one-off flourish (leader/streak celebrations are
+      // handled centrally by useScoreCelebrations below).
+      if (correct && (room?.activeQuestion?.value ?? 0) >= 400) {
+        momentBus.emit({
+          icon: "💎",
+          title: "Big Haul!",
+          subtitle: `+${room?.activeQuestion?.value} from the uncharted deep.`,
+          tone: "playful",
+        });
+      }
       await judgeAnswer(correct);
     },
-    [judgeAnswer],
+    [judgeAnswer, room?.activeQuestion],
   );
 
   // Number keys judge the current buzzer: 1 = Correct, 2 = Wrong. R reveals
@@ -168,6 +196,35 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     return () => window.removeEventListener("keydown", onKey);
   }, [room?.phase, room?.buzzes, room?.activeQuestion, quiz, handleJudge, revealAnswer, closeQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Central celebration engine: watches scores/streaks and rewards clutch
+  // lead changes, comebacks and hot streaks with sound + confetti + toasts.
+  useScoreCelebrations(room?.players, myId);
+  useRoomCodeWordEgg(room?.id);
+
+  // Watchful reactions aimed at the host's screen.
+  useIdleNudge({
+    active:
+      room?.phase === "lobby" &&
+      Object.values(room.players ?? {}).filter((p) => !p.isHost).length === 0,
+    messages: [
+      "Still recruiting explorers…",
+      "A room this nice deserves company.",
+      "Psst — share the code.",
+    ],
+  });
+  useIdleNudge({
+    active: room?.phase === "buzzing" && Object.keys(room.buzzes ?? {}).length === 0,
+    icon: "🦗",
+    tone: "warm",
+    firstDelayMs: 6000,
+    intervalMs: 12000,
+    messages: [
+      "Crickets… nobody's buzzing in.",
+      "Tough one? The board is waiting.",
+      "Brave question. Nobody's bitten yet.",
+    ],
+  });
+
   if (!room) return null;
 
   const players = Object.values(room.players).sort((a, b) => b.score - a.score || (a.joinedAt ?? 0) - (b.joinedAt ?? 0));
@@ -191,7 +248,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   };
 
   const handleOpenQuestion = async (q: Question, catName: string) => {
-    soundManager.playReveal();
+    soundManager.playWhoosh();
     await openQuestion(q, catName);
   };
 
@@ -268,7 +325,18 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
           whileTap={{ scale: 0.95 }}
           className="flex items-center gap-4 px-6 py-2 rounded-2xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 hover:border-primary-accent/50 transition-all shadow-inner group"
           onClick={handleCopyCode}
-          title="Click to copy room code"
+          onDoubleClick={() => {
+            if (decodeShown.current) return;
+            decodeShown.current = true;
+            soundManager.playDiscover();
+            momentBus.emit({
+              icon: "🔍",
+              title: "Decoded",
+              subtitle: `The code "${room.id}" translates to: adventure.`,
+              tone: "ink",
+            });
+          }}
+          title="Click to copy · double-click to decode"
         >
           <div className="flex flex-col items-end">
              <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest leading-none mb-1 group-hover:text-primary-accent transition-colors">{t('roomCode')}</span>
@@ -367,13 +435,39 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                  <div className="flex flex-wrap justify-center gap-6">
                     <AnimatePresence>
                       {gamePlayers.length === 0 ? (
-                        <motion.div 
-                          initial={{ opacity: 0 }} 
-                          animate={{ opacity: 1 }} 
-                          className="flex flex-col items-center gap-4 py-12 px-20 border-2 border-dashed border-white/10 rounded-3xl bg-white/5"
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="flex flex-col items-center gap-4 py-12 px-20 border-2 border-dashed border-white/10 rounded-3xl bg-white/5 relative overflow-hidden"
                         >
-                           <div className="w-12 h-12 rounded-full border-t-2 border-primary-accent animate-spin" />
-                           <p className="text-text-muted font-bold tracking-widest uppercase text-sm">{t('listeningForConnections')}</p>
+                          <div className="relative w-16 h-16">
+                            <div className="absolute inset-0 rounded-full border border-primary-accent/30" />
+                            <div className="absolute inset-2 rounded-full border border-primary-accent/20" />
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
+                              className="absolute inset-0 rounded-full"
+                              style={{
+                                background:
+                                  "conic-gradient(from 0deg, rgba(99,102,241,0.55), transparent 70deg, transparent 360deg)",
+                              }}
+                            />
+                            <div className="absolute inset-0 rounded-full border-t-2 border-primary-accent animate-spin" />
+                          </div>
+                          <div className="h-4 w-56">
+                            <AnimatePresence mode="wait">
+                              <motion.p
+                                key={scanIndex}
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -6 }}
+                                transition={{ duration: 0.25 }}
+                                className="text-center text-text-muted font-bold tracking-widest uppercase text-xs"
+                              >
+                                {SCAN_LINES[scanIndex]}
+                              </motion.p>
+                            </AnimatePresence>
+                          </div>
                         </motion.div>
                       ) : (
                         gamePlayers.map((p, i) => (
@@ -467,17 +561,24 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   }}
                 >
                   {/* Category headers */}
-                  {quiz.categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setCategoryModalId(cat.id)}
-                      className="glass-panel p-2 rounded-xl text-center font-display font-black text-[11px] text-white uppercase tracking-wider min-h-[3.5rem] flex flex-col items-center justify-center gap-1 transition hover:bg-white/10 hover:scale-105 group shadow-md border border-white/10"
-                    >
-                      <span className="group-hover:text-primary-accent transition-colors drop-shadow-md leading-tight">{cat.name}</span>
-                      {cat.description?.trim() && <Info className="w-3 h-3 text-text-muted shrink-0 group-hover:text-primary-accent transition-colors" />}
-                    </button>
-                  ))}
+                  {quiz.categories.map((cat) => {
+                    const isActive = room.activeQuestion?.categoryName === cat.name;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setCategoryModalId(cat.id)}
+                        className={`glass-panel p-2 rounded-xl text-center font-display font-black text-[11px] text-white uppercase tracking-wider min-h-[3.5rem] flex flex-col items-center justify-center gap-1 transition hover:bg-white/10 hover:scale-105 group shadow-md border ${
+                          isActive
+                            ? "border-warning-accent/70 shadow-[0_0_22px_rgba(245,158,11,0.45)] text-warning-accent"
+                            : "border-white/10"
+                        }`}
+                      >
+                        <span className="group-hover:text-primary-accent transition-colors drop-shadow-md leading-tight">{cat.name}</span>
+                        {cat.description?.trim() && <Info className="w-3 h-3 text-text-muted shrink-0 group-hover:text-primary-accent transition-colors" />}
+                      </button>
+                    );
+                  })}
 
                   {/* Question Tiles */}
                   {Array.from({ length: quiz.categories[0]?.questions.length ?? 5 }).map((_, rowIdx) =>
@@ -493,13 +594,23 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           onClick={() => handleOpenQuestion(q, cat.name)}
                           whileHover={!done ? { scale: 1.05, y: -3 } : {}}
                           whileTap={!done ? { scale: 0.95 } : {}}
+                          animate={!done ? { boxShadow: ["0 0 0px rgba(245,158,11,0)", "0 0 14px rgba(245,158,11,0.28)", "0 0 0px rgba(245,158,11,0)"] } : undefined}
+                          transition={!done ? { duration: 4, repeat: Infinity, ease: "easeInOut", delay: (rowIdx % 4) * 0.4 } : undefined}
+                          style={!done ? { animationDelay: `${(rowIdx % 4) * 0.4}s` } : undefined}
                           className={`rounded-xl p-3 font-display font-black text-xl text-center flex items-center justify-center min-h-[4.5rem] transition-all shadow-md ${
                             done
-                              ? "glass-panel opacity-20 cursor-not-allowed grayscale"
+                              ? "glass-panel opacity-50 cursor-not-allowed border-2 border-success-accent/30 text-success-accent"
                               : "bg-gradient-to-br from-[#0c1838] to-[#12234f] border-2 border-[#1e3a8a] text-warning-accent hover:border-warning-accent hover:shadow-[0_0_15px_rgba(245,158,11,0.3)] cursor-pointer drop-shadow-lg"
                           }`}
                         >
-                          {done ? "" : `$${q.value}`}
+                          {done ? (
+                            <span className="flex flex-col items-center leading-none pointer-events-none">
+                              <Check className="w-5 h-5" />
+                              <span className="text-[9px] uppercase tracking-widest mt-1 opacity-80">mapped</span>
+                            </span>
+                          ) : (
+                            `$${q.value}`
+                          )}
                         </motion.button>
                       );
                     }),

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { QuizLibraryProvider } from './context/QuizLibraryContext';
 import { SettingsProvider } from './context/SettingsContext';
@@ -8,6 +8,7 @@ import { PlayerRoom } from './components/PlayerRoom';
 import { QuizEditor } from './components/QuizEditor';
 import { FirebaseSetup } from './components/FirebaseSetup';
 import { isFirebaseConfigValid } from './firebase';
+import { DelightLayer } from './delight/DelightLayer';
 import type { Quiz } from './types/jeopardy';
 
 type AppView = 'lobby' | 'host' | 'player' | 'editor';
@@ -36,29 +37,33 @@ function AppContent() {
     setView('lobby');
   };
 
+  let content: ReactNode;
   if (view === 'editor') {
-    return (
+    content = (
       <div className="min-h-screen flex flex-col">
         <QuizEditor quizToEdit={editingQuiz} onClose={handleCloseEditor} />
       </div>
     );
-  }
-
-  if (view === 'host' && room) {
-    return <HostRoom onLeave={handleLeave} />;
-  }
-
-  if (view === 'player' && room) {
-    return <PlayerRoom onLeave={handleLeave} />;
+  } else if (view === 'host' && room) {
+    content = <HostRoom onLeave={handleLeave} />;
+  } else if (view === 'player' && room) {
+    content = <PlayerRoom onLeave={handleLeave} />;
+  } else {
+    content = (
+      <RoomLobby
+        onHostEntersRoom={handleHostEntersRoom}
+        onPlayerEntersRoom={handlePlayerEntersRoom}
+        onCreateQuiz={handleCreateQuiz}
+        onEditQuiz={handleEditQuiz}
+      />
+    );
   }
 
   return (
-    <RoomLobby
-      onHostEntersRoom={handleHostEntersRoom}
-      onPlayerEntersRoom={handlePlayerEntersRoom}
-      onCreateQuiz={handleCreateQuiz}
-      onEditQuiz={handleEditQuiz}
-    />
+    <>
+      {content}
+      <DelightLayer />
+    </>
   );
 }
 

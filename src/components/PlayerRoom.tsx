@@ -18,6 +18,11 @@ import type { AchievementId } from "../utils/profile";
 import { achievementBus } from "../utils/achievementBus";
 import { AchievementToast } from "./AchievementToast";
 import { MediaViewer } from "./ui/MediaViewer";
+import { useScoreCelebrations } from "../delight/celebrate";
+import { momentBus } from "../delight/moments";
+import { useRoomCodeWordEgg } from "../delight/gameEggs";
+import { useRapidRepeat, useWrongStreakEncouragement, useIdleNudge } from "../delight/watch";
+import { Check } from "lucide-react";
 
 const FUN_FACTS = [
   "Did you know? Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.",
@@ -81,6 +86,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
     if (prev === undefined || prev === room.phase) return;
     if (room.phase === "board") soundManager.playIntro();
     if (room.phase === "ended") soundManager.playWinner();
+    if (room.phase === "answer") soundManager.playDiscover();
   }, [room?.phase]);
 
   // ── Achievements ────────────────────────────────────────────────────────────
@@ -219,7 +225,31 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
     ? quiz?.categories.find((c) => c.id === categoryModalId) ?? null
     : null;
 
+  const pressRepeat = useRapidRepeat({
+    threshold: 5,
+    windowMs: 3000,
+    cooldownMs: 9000,
+    onRepeat: (key) => {
+      if (key.startsWith("react:")) {
+        momentBus.emit({
+          icon: "💬",
+          title: "Feeling chatty?",
+          subtitle: "The reactions panel is not a drum machine. (It is now.)",
+          tone: "playful",
+        });
+      } else if (key === "buzz") {
+        momentBus.emit({
+          icon: "🥺",
+          title: "Easy, tiger",
+          subtitle: "One buzz is enough — the host heard you.",
+          tone: "playful",
+        });
+      }
+    },
+  });
+
   const handleBuzz = async () => {
+    pressRepeat("buzz");
     if (hasBuzzed || room?.phase !== "buzzing") return;
     soundManager.playBuzzer();
     await buzz();
@@ -249,6 +279,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   }, [room?.phase, hasBuzzed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReact = (emoji: string) => {
+    pressRepeat(`react:${emoji}`);
     soundManager.playPop();
     sendReaction(emoji);
   };
@@ -257,6 +288,53 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
     leaveRoom();
     onLeave();
   };
+
+  // Central celebration engine: rewards clutch lead changes, comebacks and
+  // hot streaks with sound + confetti + toasts on the player's own device.
+  useScoreCelebrations(room?.players, myId);
+  useRoomCodeWordEgg(room?.id);
+
+  // Watchful reactions to this player's own behavior.
+  useWrongStreakEncouragement(room, myId);
+  useIdleNudge({
+    active: room?.phase === "lobby",
+    messages: [
+      "The host is plotting something…",
+      "Still here? So are we.",
+      "The map is lonely without a game.",
+    ],
+  });
+  useIdleNudge({
+    active: room?.phase === "buzzing" && !hasBuzzed,
+    icon: "⚡",
+    tone: "playful",
+    messages: [
+      "The board is live — tap to buzz!",
+      "Don't let them beat you to it.",
+      "Crickets? The question won't answer itself.",
+    ],
+  });
+
+  // "Quantum Buzz": if the player locks in the first buzz absurdly fast
+  // (sub-120ms after the question opened), they bent time a little.
+  const quantumShown = useRef(false);
+  useEffect(() => {
+    if (room?.phase === "board" || room?.phase === "lobby") {
+      quantumShown.current = false;
+      return;
+    }
+    if (quantumShown.current) return;
+    if (myReaction !== null && myQueuePos === 1 && myReaction <= 120) {
+      quantumShown.current = true;
+      soundManager.playEgg();
+      momentBus.emit({
+        icon: "⚡",
+        title: "Quantum Buzz!",
+        subtitle: "You buzzed before the question finished loading.",
+        tone: "ink",
+      });
+    }
+  }, [room?.phase, myReaction, myQueuePos]);
 
   if (!room) return null;
 
@@ -455,14 +533,25 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                       if (!q) return <div key={`${cat.id}-${rowIdx}`} />;
                       const done = !!room.completedQuestions?.[q.id];
                       return (
-                        <div
+                        <motion.div
                           key={q.id}
+                          animate={!done ? { boxShadow: ["0 0 0px rgba(245,158,11,0)", "0 0 14px rgba(245,158,11,0.28)", "0 0 0px rgba(245,158,11,0)"] } : undefined}
+                          transition={!done ? { duration: 4, repeat: Infinity, ease: "easeInOut", delay: (rowIdx % 4) * 0.4 } : undefined}
                           className={`glass-panel rounded-xl p-3 font-display font-black text-lg text-center flex items-center justify-center min-h-[4.5rem] transition-all ${
-                            done ? "opacity-10 grayscale" : "text-warning-accent shadow-md"
+                            done
+                              ? "opacity-50 border-2 border-success-accent/30 text-success-accent"
+                              : "text-warning-accent shadow-md"
                           }`}
                         >
-                          {done ? "" : `$${q.value}`}
-                        </div>
+                          {done ? (
+                            <span className="flex flex-col items-center leading-none pointer-events-none">
+                              <Check className="w-4 h-4" />
+                              <span className="text-[8px] uppercase tracking-widest mt-1 opacity-80">mapped</span>
+                            </span>
+                          ) : (
+                            `$${q.value}`
+                          )}
+                        </motion.div>
                       );
                     }),
                   )}

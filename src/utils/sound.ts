@@ -387,6 +387,149 @@ class SoundManager {
       });
     });
   }
+  // ─── Delight cues (theme-independent flourishes) ─────────────────────────
+
+  /** Plays a sequence of short notes at absolute offsets (seconds). */
+  private playNotes(
+    notes: { freq: number; at: number; dur: number }[],
+    type: OscillatorType,
+    gainScale = 1,
+  ) {
+    this.initCtx();
+    if (!this.ctx || this.muted || this.volume <= 0) return;
+    const now = this.ctx.currentTime;
+    notes.forEach((n) => {
+      const gainNode = this.ctx!.createGain();
+      gainNode.gain.setValueAtTime(0, now + n.at);
+      gainNode.gain.linearRampToValueAtTime(this.volume * 0.18 * gainScale, now + n.at + 0.012);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + n.at + n.dur);
+      gainNode.connect(this.ctx!.destination);
+      const osc = this.ctx!.createOscillator();
+      osc.type = type;
+      osc.frequency.setValueAtTime(n.freq, now + n.at);
+      osc.connect(gainNode);
+      osc.start(now + n.at);
+      osc.stop(now + n.at + n.dur);
+    });
+  }
+
+  /** A single pitch sweep, used for whooshes and soft thuds. */
+  private playSweep(type: OscillatorType, startFreq: number, endFreq: number, dur: number, gainScale = 1) {
+    this.initCtx();
+    if (!this.ctx || this.muted || this.volume <= 0) return;
+    const now = this.ctx.currentTime;
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.setValueAtTime(this.volume * 0.16 * gainScale, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    gainNode.connect(this.ctx.destination);
+    const osc = this.ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
+    osc.connect(gainNode);
+    osc.start(now);
+    osc.stop(now + dur);
+  }
+
+  /** Subtle UI tick for buttons and toggles. */
+  playClick() {
+    this.playSweep("square", 1200, 700, 0.04, 0.7);
+  }
+
+  /** Airy sweep when a tile flies open or a panel slides in. */
+  playWhoosh() {
+    this.playSweep("triangle", 760, 220, 0.18, 0.8);
+  }
+
+  /** Sparkly chime when something is revealed or discovered. */
+  playDiscover() {
+    this.playNotes(
+      [
+        { freq: 660, at: 0, dur: 0.12 },
+        { freq: 990, at: 0.08, dur: 0.16 },
+        { freq: 1320, at: 0.16, dur: 0.2 },
+      ],
+      "sine",
+      1,
+    );
+  }
+
+  /** Bright rising arpeggio for a hot streak. */
+  playStreak() {
+    this.playNotes(
+      [
+        { freq: 523.25, at: 0, dur: 0.1 },
+        { freq: 659.25, at: 0.07, dur: 0.1 },
+        { freq: 783.99, at: 0.14, dur: 0.1 },
+        { freq: 1046.5, at: 0.21, dur: 0.22 },
+      ],
+      "triangle",
+      1,
+    );
+  }
+
+  /** Coin-like ding for a score gain. */
+  playScoreUp() {
+    this.playNotes(
+      [
+        { freq: 880, at: 0, dur: 0.06 },
+        { freq: 1318.51, at: 0.05, dur: 0.18 },
+      ],
+      "square",
+      0.8,
+    );
+  }
+
+  /** Soft low thud for a score loss. */
+  playScoreDown() {
+    this.playSweep("triangle", 320, 120, 0.22, 0.9);
+  }
+
+  /** Bright major stab for a clutch / game-winning moment. */
+  playClutch() {
+    this.playNotes(
+      [
+        { freq: 659.25, at: 0, dur: 0.1 },
+        { freq: 987.77, at: 0.06, dur: 0.1 },
+        { freq: 1318.51, at: 0.12, dur: 0.12 },
+        { freq: 1760, at: 0.2, dur: 0.26 },
+      ],
+      "sine",
+      1,
+    );
+  }
+
+  /** Mini fanfare for a comeback. */
+  playComeback() {
+    this.playNotes(
+      [
+        { freq: 523.25, at: 0, dur: 0.12 },
+        { freq: 783.99, at: 0.12, dur: 0.12 },
+        { freq: 1046.5, at: 0.24, dur: 0.3 },
+      ],
+      "triangle",
+      1,
+    );
+  }
+
+  /** Playful two-step chime for a discovered secret. */
+  playEgg() {
+    this.playNotes(
+      [
+        { freq: 587.33, at: 0, dur: 0.1 },
+        { freq: 880, at: 0.1, dur: 0.1 },
+        { freq: 587.33, at: 0.2, dur: 0.1 },
+        { freq: 1174.66, at: 0.3, dur: 0.24 },
+      ],
+      "sine",
+      1,
+    );
+  }
+
+  /** Comedic descending "wah" for a wrong turn / funny moment. */
+  playWobble() {
+    this.playSweep("sawtooth", 380, 90, 0.35, 0.8);
+  }
 }
 
 export const soundManager = new SoundManager();

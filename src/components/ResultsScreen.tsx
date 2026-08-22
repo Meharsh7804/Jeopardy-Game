@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion, animate } from "framer-motion";
 import {
   Trophy,
@@ -22,6 +22,9 @@ import { ConfettiBurst } from "./ConfettiBurst";
 import { ACHIEVEMENT_ICONS } from "../utils/achievements";
 import { achievementKey } from "../utils/profile";
 import type { AchievementId } from "../utils/profile";
+import { momentBus } from "../delight/moments";
+import { confettiBus } from "../delight/celebrate";
+import { emitCloseWin } from "../delight/watch";
 
 const fmtReaction = (ms?: number | null) =>
   ms === undefined || ms === null ? "—" : `${(ms / 1000).toFixed(2)}s`;
@@ -133,6 +136,43 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
 
   const showAwards = funAwards.length > 0 || myAwards.length > 0 || myHints.length > 0 || allUnlocked;
   const showHints = myHints.length > 0 || allUnlocked;
+
+  // A tailored "superlative" toast when the results land (once per mount).
+  const resultEmitted = useRef(false);
+  useEffect(() => {
+    if (resultEmitted.current) return;
+    resultEmitted.current = true;
+    const me = players.find((p) => p.id === myId);
+    if (me && me.id === winner?.id && (winner.score ?? 0) > 0) {
+      momentBus.emit({
+        icon: "🏆",
+        title: "Victorious!",
+        subtitle: "You charted the unknown and claimed it.",
+        tone: "celebrate",
+      });
+      confettiBus.burst({ count: 220, duration: 3200 });
+    } else if (me) {
+      const acc = accuracyOf(me);
+      momentBus.emit({
+        icon: "🧭",
+        title: "Brave Explorer",
+        subtitle:
+          acc != null && acc < 40
+            ? "Rough seas — but every explorer gets lost."
+            : "The map is bigger than a single voyage.",
+        tone: "playful",
+      });
+    } else {
+      momentBus.emit({
+        icon: "🗺️",
+        title: "Expedition Complete",
+        subtitle: "Another unknown charted by your crew.",
+        tone: "ink",
+      });
+    }
+    // A one-point squeaker or photo finish gets its own special gasp.
+    emitCloseWin(players, myId);
+  }, [players, myId, winner]);
 
   const podiumStyle: Record<
     number,
