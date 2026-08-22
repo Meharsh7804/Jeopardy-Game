@@ -13,7 +13,7 @@ import { ScorePopup } from "./ScorePopup";
 import { SettingsModal } from "./SettingsModal";
 import { StartCountdown } from "./StartCountdown";
 import { useSettings } from "../context/SettingsContext";
-import { recordGameEnd, checkLiveAchievements, achievementProgress, achievementHint, ACHIEVEMENT_IDS, loadProfile } from "../utils/profile";
+import { recordGameEnd, checkLiveAchievements, achievementProgress, achievementHint, ACHIEVEMENT_IDS, loadProfile, grantAchievement } from "../utils/profile";
 import type { AchievementId } from "../utils/profile";
 import { achievementBus } from "../utils/achievementBus";
 import { AchievementToast } from "./AchievementToast";
@@ -22,6 +22,8 @@ import { useScoreCelebrations } from "../delight/celebrate";
 import { momentBus } from "../delight/moments";
 import { useRoomCodeWordEgg } from "../delight/gameEggs";
 import { useRapidRepeat, useWrongStreakEncouragement, useIdleNudge } from "../delight/watch";
+import { useMatchMemory } from "../delight/memories";
+import { lobbyVibe, LobbyCurrent } from "../delight/lobby";
 import { Check } from "lucide-react";
 
 const FUN_FACTS = [
@@ -245,6 +247,11 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
           tone: "playful",
         });
       }
+      // Button Masher: a hidden badge for genuinely enthusiastic tapping.
+      if (grantAchievement("buttonMasher")) {
+        soundManager.playEgg();
+        achievementBus.emit("buttonMasher");
+      }
     },
   });
 
@@ -253,6 +260,18 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
     if (hasBuzzed || room?.phase !== "buzzing") return;
     soundManager.playBuzzer();
     await buzz();
+  };
+
+  // Hidden delight: right-clicking the buzzer is a quiet wink, not an action.
+  const handleSecretBuzz = (e: React.MouseEvent) => {
+    e.preventDefault();
+    soundManager.playEgg();
+    momentBus.emit({
+      icon: "🤫",
+      title: "Right-click buzz?",
+      subtitle: "You found the hidden buzz. The game winks back.",
+      tone: "playful",
+    });
   };
 
   // Space bar = buzz in (game-show style). Guarded against typing in inputs
@@ -293,6 +312,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   // hot streaks with sound + confetti + toasts on the player's own device.
   useScoreCelebrations(room?.players, myId);
   useRoomCodeWordEgg(room?.id);
+  useMatchMemory(room, myId);
 
   // Watchful reactions to this player's own behavior.
   useWrongStreakEncouragement(room, myId);
@@ -333,6 +353,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
         subtitle: "You buzzed before the question finished loading.",
         tone: "ink",
       });
+      if (grantAchievement("buzzWhisperer")) achievementBus.emit("buzzWhisperer");
     }
   }, [room?.phase, myReaction, myQueuePos]);
 
@@ -434,28 +455,32 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                    <Users className="w-10 h-10 text-secondary-accent" />
                  </div>
               </div>
-              <div>
-                <h2 className="text-3xl font-display font-bold text-white mb-2">{t('waitingForHost')}</h2>
-                <p className="text-base text-text-muted">
-                  {t('hangTight')}
-                </p>
-                
-                <div className="mt-8 mb-4 max-w-md w-full h-24 flex items-center justify-center p-5 rounded-2xl glass-panel border border-white/10 relative overflow-hidden">
-                   <div className="absolute top-0 left-0 w-1 h-full bg-primary-accent" />
-                   <AnimatePresence mode="wait">
-                     <motion.p
-                       key={factIndex}
-                       initial={{ opacity: 0, y: 10 }}
-                       animate={{ opacity: 1, y: 0 }}
-                       exit={{ opacity: 0, y: -10 }}
-                       transition={{ duration: 0.3 }}
-                       className="text-sm text-text-main font-medium italic"
-                     >
-                       "{FUN_FACTS[factIndex]}"
-                     </motion.p>
-                   </AnimatePresence>
-                </div>
-              </div>
+                 <div>
+                 <h2 className="text-3xl font-display font-bold text-white mb-2">{t('waitingForHost')}</h2>
+                 <p className="text-base text-text-muted">
+                   {t('hangTight')}
+                 </p>
+                 
+                 <div className="mt-8 mb-4 max-w-md w-full h-24 flex items-center justify-center p-5 rounded-2xl glass-panel border border-white/10 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-primary-accent" />
+                    <AnimatePresence mode="wait">
+                      <motion.p
+                        key={factIndex}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3 }}
+                        className="text-sm text-text-main font-medium italic"
+                      >
+                        "{FUN_FACTS[factIndex]}"
+                      </motion.p>
+                    </AnimatePresence>
+                 </div>
+                 <LobbyCurrent className="max-w-md mx-auto" />
+                 <p className="text-center text-sm text-text-muted italic mt-4">
+                   {lobbyVibe(players.length, false)}
+                 </p>
+               </div>
               <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8">
                 <AnimatePresence>
                   {players.map((p, index) => (
@@ -475,9 +500,11 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                       <p className="text-sm font-bold text-white truncate px-1">
                         {p.name}
                       </p>
-                      {p.id === myId && (
-                        <p className="text-[10px] font-bold text-primary-accent uppercase tracking-widest mt-1">You</p>
-                      )}
+                       {p.id === myId && (
+                         <p className="text-[10px] font-bold text-primary-accent uppercase tracking-widest mt-1 flex items-center justify-center gap-1">
+                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> You
+                         </p>
+                       )}
                     </motion.div>
                   ))}
                 </AnimatePresence>
@@ -655,6 +682,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     />
                     <motion.button
                       onClick={handleBuzz}
+                      onContextMenu={handleSecretBuzz}
                       disabled={hasBuzzed}
                       whileHover={{ scale: 1.08 }}
                       whileTap={{ scale: 0.88 }}

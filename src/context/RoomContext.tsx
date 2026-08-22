@@ -278,6 +278,24 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       // object URLs from an old upload method — they can never load on players' devices.
       if (question.mediaUrl && !question.mediaUrl.startsWith("blob:")) aq.mediaUrl = question.mediaUrl;
       if (question.isDailyDouble) aq.isDailyDouble = question.isDailyDouble;
+      // Optimistic local update: the host must see the question the instant it
+      // is opened, not wait for the Firebase round-trip. We flip the local room
+      // state immediately; the server echo arrives a moment later with the real
+      // `openedAt` and simply reconciles (it is identical data). Players still
+      // receive the authoritative snapshot over the wire, so everyone ends up
+      // in sync — but the host is never left staring at the board.
+      const optimistic = { ...aq, openedAt: 0 } as ActiveQuestion;
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              activeQuestion: optimistic,
+              buzzes: {},
+              reactions: {},
+              phase: "buzzing" as RoomPhase,
+            }
+          : prev,
+      );
       // Write activeQuestion, clear buzzes, and flip phase atomically.
       // Every subscriber (host + all players) reacts to the same snapshot.
       await update(ref(db, `rooms/${roomCode}`), {
@@ -464,7 +482,17 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // ── Host: reveal the answer text ─────────────────────────────────────────
   const revealAnswer = useCallback(async (answerText: string) => {
-    if (!roomCode || !room?.activeQuestion) return;
+    if (!room?.activeQuestion) return;
+    // Optimistic: reveal for the host immediately.
+    setRoom((prev) =>
+      prev && prev.activeQuestion
+        ? {
+            ...prev,
+            phase: "answer" as RoomPhase,
+            activeQuestion: { ...prev.activeQuestion, answer: answerText, revealAnswer: true },
+          }
+        : prev,
+    );
     await update(ref(db, `rooms/${roomCode}/activeQuestion`), {
       answer: answerText,
       revealAnswer: true,
@@ -478,6 +506,19 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   const closeQuestion = useCallback(async () => {
     if (!roomCode || !room?.activeQuestion) return;
     const qId = room.activeQuestion.questionId;
+    // Optimistic: return the host to the board instantly.
+    setRoom((prev) =>
+      prev
+        ? {
+            ...prev,
+            phase: "board" as RoomPhase,
+            activeQuestion: null,
+            buzzes: {},
+            reactions: {},
+            [`completedQuestions/${qId}`]: true,
+          }
+        : prev,
+    );
     await update(ref(db, `rooms/${roomCode}`), {
       phase: "board" as RoomPhase,
       activeQuestion: null,

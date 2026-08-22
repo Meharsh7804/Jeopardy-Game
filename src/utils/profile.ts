@@ -154,7 +154,19 @@ export type AchievementId =
   | "highRoller"
   | "flawless"
   | "centurion"
-  | "collector";
+  | "collector"
+  // ── New: skill, funny & secret ───────────────────────────────────────────
+  | "theProfessor"
+  | "speedDemon"
+  | "brainFreeze"
+  | "buttonMasher"
+  | "onePointWonder"
+  | "clutchMaster"
+  | "comebackKid"
+  | "eggHunter"
+  | "buzzWhisperer"
+  | "riskTaker"
+  | "perfectRound";
 
 export const ACHIEVEMENT_IDS: AchievementId[] = [
   "firstWin",
@@ -166,7 +178,31 @@ export const ACHIEVEMENT_IDS: AchievementId[] = [
   "flawless",
   "centurion",
   "collector",
+  "theProfessor",
+  "speedDemon",
+  "brainFreeze",
+  "buttonMasher",
+  "onePointWonder",
+  "clutchMaster",
+  "comebackKid",
+  "eggHunter",
+  "buzzWhisperer",
+  "riskTaker",
+  "perfectRound",
 ];
+
+/**
+ * Achievements whose name/description stay hidden until unlocked. They're
+ * earned through playful, curious behavior (mashing, finding eggs, absurdly
+ * fast buzzes) rather than shown as goals — the player discovers them.
+ */
+export const SECRET_ACHIEVEMENTS: ReadonlySet<AchievementId> = new Set<AchievementId>([
+  "buttonMasher",
+  "eggHunter",
+  "buzzWhisperer",
+]);
+
+export const isSecretAchievement = (id: AchievementId): boolean => SECRET_ACHIEVEMENTS.has(id);
 
 /** i18n key for an achievement's display name (e.g. "firstWin" → "achFirstWin"). */
 export const achievementKey = (id: AchievementId): string =>
@@ -193,6 +229,10 @@ const checkAchievements = (p: PlayerProfile, history: MatchRecord[]): Record<str
     history.some((m) => m.won && m.wrong === 0 && m.correct >= 3),
   );
   grant("centurion", history.some((m) => m.myScore >= 1000));
+  // New skill badges, evaluated from lifetime/merged stats.
+  grant("theProfessor", p.bestStreak >= 5);
+  grant("speedDemon", p.fastestBuzz !== null && (p.fastestBuzz as number) <= 1500);
+  grant("perfectRound", history.some((m) => m.correct >= 5 && m.wrong === 0));
   // Meta badge: earned once 4 other achievements are unlocked.
   const othersUnlocked = Object.keys(unlocked).filter((id) => id !== "collector").length;
   grant("collector", othersUnlocked >= 4);
@@ -210,6 +250,19 @@ export const evaluateAchievements = (p: PlayerProfile): { profile: PlayerProfile
   const achievements = checkAchievements(p, history);
   const newly = ACHIEVEMENT_IDS.filter((id) => achievements[id] && !before.has(id));
   return { profile: { ...p, achievements }, newly };
+};
+
+/**
+ * Unlocks a single achievement outside the normal stat evaluation (used for
+ * playful/secret/unlock-on-event badges like Button Masher or Egg Hunter).
+ * Returns true only the first time it's earned, so callers can fire a toast.
+ */
+export const grantAchievement = (id: AchievementId): boolean => {
+  const p = loadProfile();
+  if (p.achievements[id]) return false;
+  p.achievements[id] = Date.now();
+  persist(p);
+  return true;
 };
 
 /**
@@ -247,6 +300,17 @@ export const achievementProgress = (p: PlayerProfile): Record<AchievementId, num
     highRoller: Math.min(1, p.totalPoints / 5000),
     flawless: history.some((m) => m.won && m.wrong === 0 && m.correct >= 3) ? 1 : 0,
     centurion: history.some((m) => m.myScore >= 1000) ? 1 : 0,
+    theProfessor: Math.min(1, p.bestStreak / 5),
+    speedDemon: p.fastestBuzz !== null ? Math.min(1, 1500 / (p.fastestBuzz as number)) : 0,
+    brainFreeze: 0,
+    buttonMasher: 0,
+    onePointWonder: 0,
+    clutchMaster: 0,
+    comebackKid: 0,
+    eggHunter: 0,
+    buzzWhisperer: 0,
+    riskTaker: 0,
+    perfectRound: history.some((m) => m.correct >= 5 && m.wrong === 0) ? 1 : 0,
     collector: Math.min(1, othersUnlocked / 4),
   };
 };
@@ -278,6 +342,13 @@ export const achievementHint = (
       return { key, params: { n: Math.max(0, 5000 - p.totalPoints) } };
     case "collector":
       return { key, params: { n: Math.max(0, 4 - othersUnlocked) } };
+    case "theProfessor":
+      return { key, params: { n: Math.max(0, 5 - p.bestStreak) } };
+    case "speedDemon":
+      return {
+        key,
+        params: { n: p.fastestBuzz !== null ? Math.max(0, Math.round((p.fastestBuzz as number) - 1500)) : 1500 },
+      };
     default:
       return { key };
   }

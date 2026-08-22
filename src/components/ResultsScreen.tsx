@@ -14,6 +14,10 @@ import {
   Sparkles,
   Award,
   PartyPopper,
+  Undo2,
+  Users,
+  Flag,
+  Coins,
 } from "lucide-react";
 import type { RoomPlayer } from "../types/jeopardy";
 import { PlayerAvatar } from "../utils/playerAvatar";
@@ -25,6 +29,10 @@ import type { AchievementId } from "../utils/profile";
 import { momentBus } from "../delight/moments";
 import { confettiBus } from "../delight/celebrate";
 import { emitCloseWin } from "../delight/watch";
+import { getMatchMemory } from "../delight/memories";
+import { grantAchievement } from "../utils/profile";
+import { achievementBus } from "../utils/achievementBus";
+import { soundManager } from "../utils/sound";
 
 const fmtReaction = (ms?: number | null) =>
   ms === undefined || ms === null ? "—" : `${(ms / 1000).toFixed(2)}s`;
@@ -32,6 +40,138 @@ const fmtReaction = (ms?: number | null) =>
 const accuracyOf = (p: RoomPlayer) => {
   const answered = (p.correctCount ?? 0) + (p.wrongCount ?? 0);
   return answered === 0 ? null : Math.round(((p.correctCount ?? 0) / answered) * 100);
+};
+
+// ─── Win celebration levels ──────────────────────────────────────────────────
+// The same victory is told differently depending on HOW it happened. This
+// picks a celebration tier from the final standings + the match's memory, so
+// a dominant blowout, a one-point squeaker and a huge comeback each feel
+// distinct — sound, confetti and on-screen response included.
+
+type WinTier = "normal" | "dominant" | "comeback" | "onePoint" | "clutch" | "hugeStreak";
+
+interface WinCelebration {
+  tier: WinTier;
+  headline: string;
+  sub: string;
+  confetti: number;
+  sound: () => void;
+  legendary: boolean;
+}
+
+const computeWinCelebration = (
+  players: { id: string; name: string; score: number; bestStreak?: number }[],
+  myId: string | undefined,
+  memory: ReturnType<typeof getMatchMemory>,
+): WinCelebration => {
+  const top = players[0];
+  const second = players[1];
+  const margin = top && second ? (top.score ?? 0) - (second.score ?? 0) : 0;
+  const won = !!top && (top.score ?? 0) > 0;
+  const iWon = won && top.id === myId;
+
+  const legendary =
+    memory.biggestComeback >= 400 ||
+    (memory.fastestAnswer != null && memory.fastestAnswer <= 900) ||
+    (top?.bestStreak ?? 0) >= 6 ||
+    memory.buzzerBattle >= 4;
+
+  let tier: WinTier = "normal";
+  if (iWon) {
+    if (margin === 1) tier = "onePoint";
+    else if (margin <= 5) tier = "clutch";
+    else if (memory.biggestComeback >= 400) tier = "comeback";
+    else if ((top.bestStreak ?? 0) >= 5) tier = "hugeStreak";
+    else if (margin >= 800 || (second && top.score >= 2 * second.score)) tier = "dominant";
+  }
+
+  const copy: Record<WinTier, { headline: string; sub: string; confetti: number; sound: () => void }> = {
+    dominant: { headline: "TOTAL DOMINATION", sub: "You didn't win the game — you redrew the map.", confetti: 280, sound: () => soundManager.playWinner() },
+    comeback: { headline: "THE GREAT COMEBACK", sub: "From the depths to the throne.", confetti: 240, sound: () => soundManager.playComeback() },
+    onePoint: { headline: "BY A SINGLE POINT", sub: "Destiny, settled by one.", confetti: 220, sound: () => soundManager.playClutch() },
+    clutch: { headline: "CLUTCH VICTORY", sub: "You took it in the final breath.", confetti: 200, sound: () => soundManager.playClutch() },
+    hugeStreak: { headline: "STREAK LEGEND", sub: "Untouchable, all game long.", confetti: 200, sound: () => soundManager.playStreak() },
+    normal: { headline: "VICTORY", sub: "You charted the unknown and claimed it.", confetti: 170, sound: () => soundManager.playWinner() },
+  };
+  const c = copy[tier];
+  return { tier, headline: c.headline, sub: c.sub, confetti: c.confetti, sound: c.sound, legendary };
+};
+
+// ─── Match Memories: the story of what just happened ────────────────────────
+
+interface MemoryCard {
+  Icon: typeof Trophy;
+  label: string;
+  value: string;
+  note: string;
+}
+
+const buildMemories = (
+  players: { id: string; score: number; bestStreak?: number }[],
+  memory: ReturnType<typeof getMatchMemory>,
+): MemoryCard[] => {
+  const top = players[0];
+  const second = players[1];
+  const margin = top && second ? (top.score ?? 0) - (second.score ?? 0) : 0;
+  const cards: MemoryCard[] = [];
+
+  if (memory.longestStreak >= 2) {
+    cards.push({
+      Icon: Flame,
+      label: "Longest Streak",
+      value: `${memory.longestStreak}×`,
+      note: memory.longestStreak >= 5 ? "A professor was among us." : "Momentum found its feet.",
+    });
+  }
+  if (memory.biggestComeback >= 100) {
+    cards.push({
+      Icon: Undo2,
+      label: "Biggest Comeback",
+      value: `${memory.biggestComeback} pts`,
+      note: memory.biggestComeback >= 400 ? "Dug out of the canyon." : "Clawed it back.",
+    });
+  }
+  if (memory.fastestAnswer != null) {
+    cards.push({
+      Icon: Zap,
+      label: "Fastest Answer",
+      value: fmtReaction(memory.fastestAnswer),
+      note: memory.fastestAnswer <= 900 ? "Blur-fast. Illegal, almost." : "Quick on the draw.",
+    });
+  }
+  if (memory.hardestQuestion > 0) {
+    cards.push({
+      Icon: Target,
+      label: "Toughest Tile",
+      value: `$${memory.hardestQuestion}`,
+      note: "The uncharted deep was conquered.",
+    });
+  }
+  if (memory.biggestSwing >= 100) {
+    cards.push({
+      Icon: Coins,
+      label: "Biggest Swing",
+      value: `${memory.biggestSwing} pts`,
+      note: "One moment shifted the whole map.",
+    });
+  }
+  if (memory.buzzerBattle >= 2) {
+    cards.push({
+      Icon: Users,
+      label: "Buzzer Brawl",
+      value: `${memory.buzzerBattle} in`,
+      note: memory.buzzerBattle >= 4 ? "A full-on scrum." : "Friendly scraps.",
+    });
+  }
+  if (players.length >= 2 && margin > 0) {
+    cards.push({
+      Icon: Flag,
+      label: "Closest Finish",
+      value: `${margin} pt${margin === 1 ? "" : "s"}`,
+      note: margin === 1 ? "Decided by a heartbeat." : "A photo finish.",
+    });
+  }
+  return cards;
 };
 
 /** Counts up to `value` once, after `delay` ms. */
@@ -95,6 +235,9 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   const iWon = !!winner && winner.id === myId && (winner.score ?? 0) > 0;
   const hasWinner = !!winner && (winner.score ?? 0) > 0;
 
+  const [celebrationTier, setCelebrationTier] = useState<WinTier>("normal");
+  const [isLegendary, setIsLegendary] = useState(false);
+
   const podiumOrder = [players[1], players[0], players[2]].filter(Boolean) as RoomPlayer[];
   const rest = players.slice(3);
 
@@ -137,20 +280,39 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   const showAwards = funAwards.length > 0 || myAwards.length > 0 || myHints.length > 0 || allUnlocked;
   const showHints = myHints.length > 0 || allUnlocked;
 
-  // A tailored "superlative" toast when the results land (once per mount).
+  // A tailored, tier-aware celebration when the results land (once per mount).
   const resultEmitted = useRef(false);
   useEffect(() => {
     if (resultEmitted.current) return;
     resultEmitted.current = true;
+    const memory = getMatchMemory();
+    const top = players[0];
+    const second = players[1];
+    const margin = top && second ? (top.score ?? 0) - (second.score ?? 0) : 0;
+    if (players.length >= 2) memory.closestFinish = margin;
+
+    const wc = computeWinCelebration(players, myId, memory);
     const me = players.find((p) => p.id === myId);
-    if (me && me.id === winner?.id && (winner.score ?? 0) > 0) {
-      momentBus.emit({
-        icon: "🏆",
-        title: "Victorious!",
-        subtitle: "You charted the unknown and claimed it.",
-        tone: "celebrate",
-      });
-      confettiBus.burst({ count: 220, duration: 3200 });
+    const iWon = me && me.id === winner?.id && (winner.score ?? 0) > 0;
+
+    if (iWon) {
+      setCelebrationTier(wc.tier);
+      setIsLegendary(wc.legendary);
+      const tierIcon: Record<WinTier, string> = {
+        dominant: "👑",
+        comeback: "🔙",
+        onePoint: "📸",
+        clutch: "🏁",
+        hugeStreak: "🔥",
+        normal: "🏆",
+      };
+      momentBus.emit({ icon: tierIcon[wc.tier], title: wc.headline, subtitle: wc.sub, tone: "celebrate" });
+      wc.sound();
+      confettiBus.burst({ count: wc.confetti, duration: 3200 });
+      // Win-type badges. Secret ones reveal themselves only on unlock.
+      if (margin === 1 && grantAchievement("onePointWonder")) achievementBus.emit("onePointWonder");
+      if (margin <= 5 && margin !== 1 && grantAchievement("clutchMaster")) achievementBus.emit("clutchMaster");
+      if (memory.biggestComeback >= 400 && grantAchievement("comebackKid")) achievementBus.emit("comebackKid");
     } else if (me) {
       const acc = accuracyOf(me);
       momentBus.emit({
@@ -169,6 +331,20 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
         subtitle: "Another unknown charted by your crew.",
         tone: "ink",
       });
+    }
+
+    // A legendary match gets its own banner even if you didn't take it.
+    if (wc.legendary) {
+      setIsLegendary(true);
+      if (!iWon) {
+        momentBus.emit({
+          icon: "🌟",
+          title: "LEGENDARY MATCH",
+          subtitle: "Nobody will describe this one normally.",
+          tone: "celebrate",
+        });
+        confettiBus.burst({ count: 200, duration: 2800 });
+      }
     }
     // A one-point squeaker or photo finish gets its own special gasp.
     emitCloseWin(players, myId);
@@ -201,8 +377,25 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
     },
   };
 
+  const memories = buildMemories(players, getMatchMemory());
+  const rootGlow = isLegendary
+    ? "win-legendary"
+    : celebrationTier === "dominant"
+      ? "win-dominant"
+      : "";
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[75vh] gap-8 text-center p-6 w-full relative">
+    <div className={`flex flex-col items-center justify-center min-h-[75vh] gap-8 text-center p-6 w-full relative ${rootGlow}`}>
+      {/* Legendary-match golden flash (brief, then settles) */}
+      {isLegendary && (
+        <motion.div
+          initial={{ opacity: 0.55 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: 1.1, ease: "easeOut" }}
+          className="pointer-events-none fixed inset-0 z-[44] bg-[radial-gradient(circle_at_50%_40%,rgba(251,191,36,0.28),transparent_60%)]"
+          aria-hidden
+        />
+      )}
       <ConfettiBurst />
 
       {/* ── Headline — dynamic for winner vs. everyone else ────────────────── */}
@@ -638,6 +831,44 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               </div>
             </div>
           )}
+        </motion.div>
+      )}
+
+      {/* ── Match Memories: the story of what just happened ────────────────── */}
+      {memories.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.9 }}
+          className="w-full max-w-3xl"
+        >
+          <div className="flex items-center justify-center gap-2 mb-4 text-muted/80">
+            <Sparkles className="w-4 h-4" />
+            <span className="font-display tracking-[0.25em] text-xs uppercase">
+              Match Memories
+            </span>
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {memories.map((m, i) => (
+              <motion.div
+                key={m.label}
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 1 + i * 0.06 }}
+                className="flex flex-col items-center gap-1 rounded-2xl bg-surface border border-border/60 px-3 py-4 text-center hover:border-accent/40 transition-colors"
+              >
+                <m.Icon className="w-5 h-5 text-accent mb-1" />
+                <span className="text-lg font-display font-black text-secondary-text leading-none">
+                  {m.value}
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  {m.label}
+                </span>
+                <span className="text-[11px] leading-snug text-muted/70">{m.note}</span>
+              </motion.div>
+            ))}
+          </div>
         </motion.div>
       )}
 

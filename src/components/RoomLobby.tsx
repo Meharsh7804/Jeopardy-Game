@@ -42,9 +42,13 @@ import {
   xpOf,
   levelInfo,
   ACHIEVEMENT_IDS,
+  isSecretAchievement,
   nextAchievementGoal,
   achievementHint,
 } from "../utils/profile";
+import { momentBus } from "../delight/moments";
+import { soundManager } from "../utils/sound";
+import { useLongHover } from "../delight/secrets";
 
 interface RoomLobbyProps {
   onHostEntersRoom: () => void;
@@ -63,6 +67,18 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   const { quizzes, isSynced } = useQuizLibrary();
   const { t } = useSettings();
   const reduce = !!useReducedMotion();
+
+  // Hidden delight: hover the logo long enough and it murmurs a secret back.
+  const logoRef = React.useRef<HTMLDivElement>(null);
+  useLongHover(logoRef, 2500, () => {
+    soundManager.playEgg();
+    momentBus.emit({
+      icon: "🔮",
+      title: "The logo hums",
+      subtitle: "Some totems remember every game played beneath them.",
+      tone: "ink",
+    });
+  });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
@@ -178,7 +194,9 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
       {/* ── Minimal navigation ─────────────────────────────────────────── */}
       <header className="relative z-40 w-full max-w-7xl mx-auto px-5 sm:px-10 pt-6 pb-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Logo size={40} withWordmark />
+          <div ref={logoRef} className="inline-flex">
+            <Logo size={40} withWordmark />
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -351,17 +369,19 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                 {ACHIEVEMENT_IDS.map((id) => {
                   const Icon = ACHIEVEMENT_ICONS[id];
                   const unlocked = !!profile.achievements[id];
+                  const secret = isSecretAchievement(id) && !unlocked;
+                  const nameKey = `ach${id[0].toUpperCase()}${id.slice(1)}`;
                   return (
                     <div
                       key={id}
-                      title={`${t(`ach${id[0].toUpperCase()}${id.slice(1)}`)} — ${t(`ach${id[0].toUpperCase()}${id.slice(1)}Desc`)}`}
+                      title={secret ? "??? — hidden achievement" : `${t(nameKey)} — ${t(`${nameKey}Desc`)}`}
                       className={`flex items-center justify-center p-2.5 rounded-xl border transition-all ${
                         unlocked
                           ? "bg-warning-accent/10 border-warning-accent/30 text-warning-accent"
                           : "bg-white/[0.03] border-white/5 text-text-muted/40"
                       }`}
                     >
-                      <Icon className="w-4 h-4" />
+                      {secret ? <span className="text-[10px] font-black">?</span> : <Icon className="w-4 h-4" />}
                     </div>
                   );
                 })}

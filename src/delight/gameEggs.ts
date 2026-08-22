@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { momentBus } from "./moments";
 import { soundManager } from "../utils/sound";
+import { grantAchievement } from "../utils/profile";
+import { achievementBus } from "../utils/achievementBus";
 
 /**
  * Some room codes (the random 6-letter id) accidentally contain real words.
@@ -37,6 +39,7 @@ export const useRoomCodeWordEgg = (roomId?: string) => {
         shownThisSession = true;
         soundManager.playEgg();
         momentBus.emit({ icon: data.icon, title: data.title, subtitle: data.subtitle, tone: "playful" });
+        if (grantAchievement("eggHunter")) achievementBus.emit("eggHunter");
         break;
       }
     }

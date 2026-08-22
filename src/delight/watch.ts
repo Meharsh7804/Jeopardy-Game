@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { momentBus, type MomentTone } from "./moments";
 import { soundManager } from "../utils/sound";
 import { confettiBus } from "./celebrate";
+import { grantAchievement } from "../utils/profile";
+import { achievementBus } from "../utils/achievementBus";
 
 // ─── Rapid repeat (the "easy, tiger" detector) ───────────────────────────────
 // Returns a stable `press(key)` you call on every tap. When the SAME key is hit
@@ -83,7 +85,17 @@ export function useWrongStreakEncouragement(
             tone: "ink",
           });
         }
+        // Funny secret badge: a full brain freeze.
+        if (streak.current >= 6 && grantAchievement("brainFreeze")) {
+          soundManager.playEgg();
+          achievementBus.emit("brainFreeze");
+        }
       } else if (e.changeAmount > 0) {
+        // Risk Taker: nailed the highest-value tile (the biggest single gain).
+        if (e.changeAmount >= 400 && grantAchievement("riskTaker")) {
+          soundManager.playEgg();
+          achievementBus.emit("riskTaker");
+        }
         if (streak.current >= 2) {
           momentBus.emit({
             icon: "✨",

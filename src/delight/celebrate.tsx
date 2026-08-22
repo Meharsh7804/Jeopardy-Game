@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ConfettiBurst } from "../components/ConfettiBurst";
 import { soundManager } from "../utils/sound";
 import { momentBus, type MomentTone } from "./moments";
+import { recordComeback, recordStreak } from "./memories";
 
 // ─── Global confetti bus ─────────────────────────────────────────────────────
 
@@ -113,10 +114,12 @@ export const celebrateScoreChange = (input: CelebrateInput): void => {
     const beforeGap = (before[beforeLeader] ?? 0) - (before[afterLeader] ?? 0);
     const epic = beforeGap >= 500;
     if (epic) {
+      recordComeback(beforeGap);
       emit("🌟", "EPIC Comeback!", `Climbed back from ${beforeGap} down to take the lead.`, "celebrate");
       soundManager.playComeback();
       confettiBus.burst({ count: 240, colors: THEME_COLORS, duration: 3000 });
     } else if (wasTrailing) {
+      recordComeback(Math.max(beforeGap, 0));
       emit("🔙", "Comeback!", "Snatched the lead from the depths.", "warm");
       soundManager.playComeback();
       confettiBus.burst({ count: 160, colors: THEME_COLORS, duration: 2600 });
@@ -140,6 +143,7 @@ export const celebrateScoreChange = (input: CelebrateInput): void => {
         const key = `${id}-${m}`;
         if (now >= m && (beforeStreaks[id] ?? 0) < m && !streakSeen.has(key)) {
           streakSeen.add(key);
+          recordStreak(m);
           const name = id === input.myId ? "You're" : "On";
           emit(
             "🔥",

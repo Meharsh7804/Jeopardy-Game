@@ -34,6 +34,8 @@ import { useScoreCelebrations } from "../delight/celebrate";
 import { momentBus } from "../delight/moments";
 import { useRoomCodeWordEgg } from "../delight/gameEggs";
 import { useIdleNudge } from "../delight/watch";
+import { useMatchMemory } from "../delight/memories";
+import { lobbyVibe, LobbyCurrent } from "../delight/lobby";
 
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
@@ -200,6 +202,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   // lead changes, comebacks and hot streaks with sound + confetti + toasts.
   useScoreCelebrations(room?.players, myId);
   useRoomCodeWordEgg(room?.id);
+  useMatchMemory(room, myId);
 
   // Watchful reactions aimed at the host's screen.
   useIdleNudge({
@@ -427,11 +430,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                         "{FUN_FACTS[factIndex]}"
                       </motion.p>
                     </AnimatePresence>
-                 </div>
-              </div>
+                  </div>
+               </div>
 
-              {/* Players Centered in Lobby */}
-              <div className="w-full">
+               <LobbyCurrent className="max-w-md" />
+
+               {/* Players Centered in Lobby */}
+               <div className="w-full">
+                  <p className="text-center text-sm text-text-muted italic mb-6">
+                    {lobbyVibe(gamePlayers.length, true)}
+                  </p>
                  <div className="flex flex-wrap justify-center gap-6">
                     <AnimatePresence>
                       {gamePlayers.length === 0 ? (
@@ -488,10 +496,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           >
                              <div className="relative">
                                <PlayerAvatar seed={p.id} name={p.name} size={80} className={`rounded-full ring-4 ring-white/5 group-hover:ring-primary-accent/30 transition-all drop-shadow-xl ${p.connected === false ? "opacity-40 grayscale" : ""}`} />
-                               <span
-                                 title={p.connected === false ? `${p.name} disconnected` : `${p.name} connected`}
-                                 className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-primary-bg ${p.connected === false ? "bg-danger-accent" : "bg-green-500"}`}
-                               />
+                                <span
+                                  title={p.connected === false ? `${p.name} disconnected` : `${p.name} connected`}
+                                  className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-primary-bg ${p.connected === false ? "bg-danger-accent" : "bg-green-500 animate-pulse"}`}
+                                />
                              </div>
                              <span className="font-display font-bold text-lg text-white group-hover:text-primary-accent transition-colors">
                                {p.name}
