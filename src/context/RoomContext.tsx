@@ -202,7 +202,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(() => loadSession() !== null);
+  // When there's no session to restore, start hydrated immediately so the
+  // lobby renders right away. Only start false when a restore is pending.
+  const sessionToRestore = useRef(loadSession());
+  const [hydrated, setHydrated] = useState(() => sessionToRestore.current === null);
   const listenerRef = useRef<(() => void) | null>(null);
 
   const isHost = room ? room.hostId === myId : false;
@@ -241,9 +244,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   // If a room session was persisted (URL hash or localStorage), rejoin
   // automatically so refresh never drops the user back to the lobby.
   useEffect(() => {
-    if (!roomCode || room) return; // already subscribed or no room to restore
-    const session = loadSession();
-    if (!session || session.roomCode !== roomCode) return;
+    const session = sessionToRestore.current;
+    if (!roomCode || room || !session || session.roomCode !== roomCode) {
+      // No session to restore or already subscribed — mark hydrated.
+      if (!room) setHydrated(true);
+      return;
+    }
 
     let cancelled = false;
     (async () => {
