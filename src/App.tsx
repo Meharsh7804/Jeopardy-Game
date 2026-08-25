@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { QuizLibraryProvider } from './context/QuizLibraryContext';
 import { SettingsProvider } from './context/SettingsContext';
@@ -14,31 +14,75 @@ import type { Quiz } from './types/jeopardy';
 type AppView = 'lobby' | 'host' | 'player' | 'editor';
 
 function AppContent() {
-  const { room } = useRoom();
-  const [view, setView] = useState<AppView>('lobby');
-  const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
+  const { room, isHost, leaveRoom, hydrated } = useRoom();
 
-  const handleHostEntersRoom = () => setView('host');
-  const handlePlayerEntersRoom = () => setView('player');
-  const handleLeave = () => setView('lobby');
+  // 'editor' is local-only (no room), so track it separately.
+  const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
+  const [view, setView] = useState<AppView>('lobby');
+  const [navReady, setNavReady] = useState(false);
+
+  // ── Derive view from room state once hydrated ────────────────────────────
+  // On refresh, the room context auto-rejoins the persisted room. We wait for
+  // hydration before choosing a view so the lobby never flashes.
+  useEffect(() => {
+    if (!hydrated) return;
+    setNavReady(true);
+    if (room) {
+      setView(isHost ? 'host' : 'player');
+    } else if (!editingQuiz) {
+      setView('lobby');
+    }
+  }, [hydrated, room, isHost, editingQuiz]);
+
+  // ── Browser Back via popstate ────────────────────────────────────────────
+  // When the user presses Back after entering a room, leave cleanly.
+  const handlePopState = useCallback(() => {
+    const hash = window.location.hash.replace('#', '').trim();
+    if (!hash && (view === 'host' || view === 'player') && room) {
+      leaveRoom();
+    }
+  }, [view, room, leaveRoom]);
+
+  useEffect(() => {
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [handlePopState]);
+
+  // ── Navigation helpers ───────────────────────────────────────────────────
+  const handleHostEntersRoom = () => {
+    setView('host');
+    history.pushState({ view: 'host' }, '');
+  };
+  const handlePlayerEntersRoom = () => {
+    setView('player');
+    history.pushState({ view: 'player' }, '');
+  };
+  const handleLeave = () => {
+    setView('lobby');
+    // replaceState so Back doesn't re-enter the room we just left.
+    history.replaceState({ view: 'lobby' }, '', window.location.pathname);
+    leaveRoom();
+  };
 
   const handleCreateQuiz = () => {
     setEditingQuiz(null);
     setView('editor');
   };
-
   const handleEditQuiz = (quiz: Quiz) => {
     setEditingQuiz(quiz);
     setView('editor');
   };
-
   const handleCloseEditor = () => {
     setEditingQuiz(null);
     setView('lobby');
   };
 
+  // ── Render ───────────────────────────────────────────────────────────────
+  // Gate rendering until hydration completes to avoid a flash of the lobby.
   let content: ReactNode;
-  if (view === 'editor') {
+  if (!navReady) {
+    content = null; // or a minimal loader
+  } else if (view === 'editor') {
     content = (
       <div className="min-h-screen flex flex-col">
         <QuizEditor quizToEdit={editingQuiz} onClose={handleCloseEditor} />

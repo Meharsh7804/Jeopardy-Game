@@ -130,30 +130,27 @@ export const celebrateScoreChange = (input: CelebrateInput): void => {
     }
   }
 
-  // 2) A hefty single haul (the deep-end tiles).
-  if (changedId != null && isCorrect && tileValue && tileValue >= 400) {
+  // 2) A hefty single haul (the deep-end tiles) — only for the current player.
+  if (changedId != null && changedId === input.myId && isCorrect && tileValue && tileValue >= 400) {
     emit("💎", "Big Haul!", `+${tileValue} from the uncharted deep.`, "playful");
   }
 
-  // 3) Hot-streak milestones (per player, fires once per milestone per session).
+  // 3) Hot-streak milestones — only fire for the current player's own streak.
   if (beforeStreaks && afterStreaks) {
-    for (const id of ids) {
-      const now = afterStreaks[id] ?? 0;
-      for (const m of STREAK_MILESTONES) {
-        const key = `${id}-${m}`;
-        if (now >= m && (beforeStreaks[id] ?? 0) < m && !streakSeen.has(key)) {
-          streakSeen.add(key);
-          recordStreak(m);
-          const name = id === input.myId ? "You're" : "On";
-          emit(
-            "🔥",
-            m >= 7 ? "Unstoppable!" : "On Fire!",
-            `${name} ${m}-streak strong.`,
-            "forest",
-          );
-          soundManager.playStreak();
-          if (m >= 5) confettiBus.burst({ count: 90, colors: ["#10b981", "#fbbf24"] });
-        }
+    const now = afterStreaks[input.myId] ?? 0;
+    for (const m of STREAK_MILESTONES) {
+      const key = `${input.myId}-${m}`;
+      if (now >= m && (beforeStreaks[input.myId] ?? 0) < m && !streakSeen.has(key)) {
+        streakSeen.add(key);
+        recordStreak(m);
+        emit(
+          "🔥",
+          m >= 7 ? "Unstoppable!" : "On Fire!",
+          `You're ${m}-streak strong.`,
+          "forest",
+        );
+        soundManager.playStreak();
+        if (m >= 5) confettiBus.burst({ count: 90, colors: ["#10b981", "#fbbf24"] });
       }
     }
   }
@@ -201,8 +198,9 @@ export const useScoreCelebrations = (
     }
 
     // "Four Digits": landing on exactly 1000 (a perfectly round milestone)
-    // is a tiny, delightful coincidence worth calling out.
+    // is a tiny, delightful coincidence worth calling out — only for the current player.
     for (const id of Object.keys(scores)) {
+      if (id !== myId) continue;
       const now = scores[id];
       const was = before[id] ?? 0;
       if (now !== was && now === 1000 && was !== 1000 && !fourDigitsSeen.has(id)) {

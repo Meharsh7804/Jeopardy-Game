@@ -36,6 +36,59 @@ import type {
   ScoreHistoryEntry,
 } from "../types/jeopardy";
 
+// ─── session persistence ─────────────────────────────────────────────────────
+
+const SESSION_KEY = "jeopardy_room_session";
+
+interface RoomSession {
+  roomCode: string;
+  isHost: boolean;
+}
+
+const saveSession = (roomCode: string, isHost: boolean) => {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, isHost }));
+    // Also reflect in the URL hash so refresh always lands on the room.
+    if (window.location.hash !== `#${roomCode}`) {
+      history.replaceState(null, "", `#${roomCode}`);
+    }
+  } catch {
+    // storage unavailable — session won't survive refresh
+  }
+};
+
+const loadSession = (): RoomSession | null => {
+  try {
+    // Prefer URL hash (source of truth after direct navigation).
+    const hash = window.location.hash.replace("#", "").trim().toUpperCase();
+    if (hash.length >= 4) {
+      const stored = localStorage.getItem(SESSION_KEY);
+      const parsed: RoomSession | null = stored ? JSON.parse(stored) : null;
+      // Trust hash if it differs from stored (user navigated directly).
+      if (parsed && parsed.roomCode !== hash) {
+        return { roomCode: hash, isHost: parsed.isHost };
+      }
+      return parsed ?? { roomCode: hash, isHost: false };
+    }
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as RoomSession;
+  } catch {
+    return null;
+  }
+};
+
+const clearSession = () => {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // ignore
+  }
+  if (window.location.hash) {
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  }
+};
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const genId = (len = 6) =>
@@ -98,6 +151,10 @@ interface RoomContextProps {
   loading: boolean;
   error: string | null;
 
+  // True once any persisted session has been restored (or confirmed absent).
+  // Components can use this to avoid flashing the lobby while auto-join runs.
+  hydrated: boolean;
+
   // host actions
   createRoom: (quiz: Quiz, hostName: string) => Promise<string>;
   startGame: () => Promise<void>;
@@ -139,9 +196,13 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   const [myName, setMyName] = useState<string>(
     () => sessionStorage.getItem("jeopardy_player_name") || "",
   );
-  const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [roomCode, setRoomCode] = useState<string | null>(() => {
+    const session = loadSession();
+    return session?.roomCode ?? null;
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(() => loadSession() !== null);
   const listenerRef = useRef<(() => void) | null>(null);
 
   const isHost = room ? room.hostId === myId : false;
@@ -161,6 +222,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           setRoom(null);
           setRoomCode(null);
           setError("Room no longer exists.");
+          clearSession();
         }
       },
       (err) => {
@@ -174,6 +236,89 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       listenerRef.current = null;
     };
   }, [roomCode]);
+
+  // ── Auto-join on mount / refresh ──────────────────────────────────────────
+  // If a room session was persisted (URL hash or localStorage), rejoin
+  // automatically so refresh never drops the user back to the lobby.
+  useEffect(() => {
+    if (!roomCode || room) return; // already subscribed or no room to restore
+    const session = loadSession();
+    if (!session || session.roomCode !== roomCode) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await get(ref(db, `rooms/${roomCode}`));
+        if (cancelled) return;
+        if (!snap.exists()) {
+          clearSession();
+          setRoomCode(null);
+          setHydrated(true);
+          setError("Room no longer exists.");
+          return;
+        }
+
+        const existingRoom = snap.val() as Room;
+        const existingPlayer = existingRoom.players?.[myId];
+        const isRejoin = !!existingPlayer;
+
+        if (session.isHost && existingRoom.hostId === myId) {
+          // Host rejoining: update presence and re-register onDisconnect.
+          const connectedRef = ref(db, `rooms/${roomCode}/players/${myId}/connected`);
+          const lastSeenRef = ref(db, `rooms/${roomCode}/players/${myId}/lastSeen`);
+          await update(ref(db, `rooms/${roomCode}`), {
+            [`players/${myId}/connected`]: true,
+            [`players/${myId}/lastSeen`]: serverTimestamp(),
+          });
+          await onDisconnect(connectedRef).set(false);
+          await onDisconnect(lastSeenRef).set(serverTimestamp());
+        } else {
+          // Player rejoining: use existing join logic.
+          const player: RoomPlayer = {
+            id: myId,
+            name: myName || existingPlayer?.name || "Player",
+            score: existingPlayer?.score ?? 0,
+            joinedAt: existingPlayer?.joinedAt ?? Date.now(),
+            isHost: false,
+            connected: true,
+            lastSeen: Date.now(),
+            buzzCount: existingPlayer?.buzzCount ?? 0,
+            correctCount: existingPlayer?.correctCount ?? 0,
+            wrongCount: existingPlayer?.wrongCount ?? 0,
+            fastestBuzz: existingPlayer?.fastestBuzz ?? null,
+            streak: existingPlayer?.streak ?? 0,
+            bestStreak: existingPlayer?.bestStreak ?? 0,
+          };
+
+          const updates: Record<string, any> = {
+            [`players/${myId}`]: player,
+          };
+          if (!isRejoin) {
+            updates[`buzzes/${myId}`] = null;
+          }
+          await update(ref(db, `rooms/${roomCode}`), updates);
+
+          const connectedRef = ref(db, `rooms/${roomCode}/players/${myId}/connected`);
+          const lastSeenRef = ref(db, `rooms/${roomCode}/players/${myId}/lastSeen`);
+          await onDisconnect(connectedRef).set(false);
+          await onDisconnect(lastSeenRef).set(serverTimestamp());
+
+          // Persist the name we just used.
+          const resolvedName = myName || existingPlayer?.name || "Player";
+          setMyName(resolvedName);
+          sessionStorage.setItem("jeopardy_player_name", resolvedName);
+        }
+      } catch {
+        // Network or parse error — let the user see the lobby with a note.
+        clearSession();
+        setRoomCode(null);
+      } finally {
+        setHydrated(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [roomCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Host: create room ─────────────────────────────────────────────────────
   const createRoom = useCallback(
@@ -216,6 +361,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         setMyName(hostName);
         sessionStorage.setItem("jeopardy_player_name", hostName);
         setRoomCode(code);
+        saveSession(code, true);
         return code;
       } catch (e: any) {
         setError(e.message);
@@ -632,6 +778,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         setMyName(playerName);
         sessionStorage.setItem("jeopardy_player_name", playerName);
         setRoomCode(upperCode);
+        saveSession(upperCode, false);
       } catch (e: any) {
         setError(e.message);
         throw e;
@@ -724,6 +871,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     setRoom(null);
     setRoomCode(null);
     setError(null);
+    clearSession();
   }, [roomCode, myId, room]);
 
   return (
@@ -735,6 +883,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         room,
         loading,
         error,
+        hydrated,
         createRoom,
         startGame,
         openQuestion,
