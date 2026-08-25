@@ -58,7 +58,55 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
   const myPlayer = room?.players?.[myId];
   const hasBuzzed = !!room?.buzzes?.[myId];
-  const sortedBuzzes = Object.entries(room?.buzzes || {}).sort((a, b) => a[1] - b[1]);
+
+  // ── Settled buzz ranking ────────────────────────────────────────────────────
+  // We never render a player's queue position from the live `room.buzzes` map
+  // because each client's write arrives at a different instant, causing a
+  // 1st-place-then-2nd-place flicker. Instead we commit the ranking only after
+  // the buzz map has been stable (unchanged) for BUZZ_SETTLE_MS. During that
+  // window the UI shows a neutral "calculating" state.
+  const BUZZ_SETTLE_MS = 300;
+  const [committedBuzzes, setCommittedBuzzes] = useState<[string, number][]>([]);
+  const pendingSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBuzzSnapshotRef = useRef<string>("");
+
+  useEffect(() => {
+    const rawBuzzes = room?.buzzes ?? {};
+    const snapshot = JSON.stringify(rawBuzzes);
+
+    // Clear committed ranking when a new question opens (buzzes wiped)
+    if (Object.keys(rawBuzzes).length === 0) {
+      if (pendingSettleRef.current) clearTimeout(pendingSettleRef.current);
+      lastBuzzSnapshotRef.current = "";
+      setCommittedBuzzes([]);
+      return;
+    }
+
+    // Same snapshot as last time — nothing changed, no need to restart the timer
+    if (snapshot === lastBuzzSnapshotRef.current) return;
+    lastBuzzSnapshotRef.current = snapshot;
+
+    // A new buzz arrived. Reset the settle timer.
+    if (pendingSettleRef.current) clearTimeout(pendingSettleRef.current);
+    pendingSettleRef.current = setTimeout(() => {
+      // Buzzes have been stable for BUZZ_SETTLE_MS — commit the final order.
+      const sorted = Object.entries(rawBuzzes).sort((a, b) => (a[1] as number) - (b[1] as number));
+      setCommittedBuzzes(sorted);
+    }, BUZZ_SETTLE_MS);
+
+    return () => {
+      if (pendingSettleRef.current) clearTimeout(pendingSettleRef.current);
+    };
+  }, [room?.buzzes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset committed buzzes when the phase changes away from buzzing
+  useEffect(() => {
+    if (room?.phase !== "buzzing") {
+      if (pendingSettleRef.current) clearTimeout(pendingSettleRef.current);
+      lastBuzzSnapshotRef.current = "";
+      setCommittedBuzzes([]);
+    }
+  }, [room?.phase]);
 
   // Reaction time: buzz timestamps and openedAt are both server-resolved, so
   // the diff is fair across devices regardless of clock skew.
@@ -71,7 +119,12 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const myBuzzTs =
     typeof room?.buzzes?.[myId] === "number" ? (room.buzzes[myId] as number) : 0;
   const myReaction = myBuzzTs > 0 ? reactionFor(myBuzzTs) : null;
-  const myQueuePos = myBuzzTs > 0 ? sortedBuzzes.findIndex(([pId]) => pId === myId) + 1 : 0;
+  // Queue position is derived ONLY from the committed (settled) order
+  const myQueuePos = myBuzzTs > 0 && committedBuzzes.length > 0
+    ? committedBuzzes.findIndex(([pId]) => pId === myId) + 1
+    : 0;
+  // Whether the server order is still being collected
+  const buzzSettling = hasBuzzed && committedBuzzes.length === 0;
 
   const [factIndex, setFactIndex] = useState(0);
   const [isOffline, setIsOffline] = useState(false);
@@ -714,7 +767,8 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                        <p className="text-sm font-bold text-white uppercase tracking-widest">{t('youBuzzedIn')}</p>
                      </div>
                      <div className="flex items-center gap-2 sm:pl-4 sm:border-l sm:border-white/10">
-                       {myReaction !== null && (
+                       {/* Reaction time badge — only shown once order is settled */}
+                       {myReaction !== null && !buzzSettling && (
                          <span className={`flex items-center gap-1 text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${
                            myReaction <= 1000 && myQueuePos === 1
                              ? "bg-warning-accent/20 text-warning-accent border-warning-accent/40"
@@ -723,36 +777,68 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                            <Zap className="w-3.5 h-3.5" /> {fmtReaction(myReaction)}
                          </span>
                        )}
-{myQueuePos > 1 && (
-                          <span className="text-xs font-black text-primary-accent uppercase tracking-widest">
-                            {t('youAreInQueue', { n: myQueuePos })}
-                          </span>
-                        )}
-                        {myReaction !== null && myReaction <= 1000 && myQueuePos === 1 && (
-                          <span className="text-xs font-black text-primary-accent uppercase tracking-widest hidden sm:inline">
-                            {t('firstBonus', { n: Math.max(1, Math.round((room.activeQuestion?.value ?? 0) * 0.1)) })}
-                          </span>
-                        )}
+                       {/* While the server order is still settling show a neutral indicator */}
+                       {buzzSettling && (
+                         <span className="text-xs font-bold text-text-muted uppercase tracking-widest animate-pulse">
+                           …
+                         </span>
+                       )}
+                       {!buzzSettling && myQueuePos > 1 && (
+                         <span className="text-xs font-black text-primary-accent uppercase tracking-widest">
+                           {t('youAreInQueue', { n: myQueuePos })}
+                         </span>
+                       )}
+                       {!buzzSettling && myReaction !== null && myReaction <= 1000 && myQueuePos === 1 && (
+                         <span className="text-xs font-black text-primary-accent uppercase tracking-widest hidden sm:inline">
+                           {t('firstBonus', { n: Math.max(1, Math.round((room.activeQuestion?.value ?? 0) * 0.1)) })}
+                         </span>
+                       )}
                      </div>
                   </div>
                   
-                  <AnimatePresence>
-                    {sortedBuzzes.length > 0 && (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+                  {/* Buzz queue — rendered only from the settled (authoritative) order.
+                      While settling we show a pulsing placeholder so nothing flickers. */}
+                  <AnimatePresence mode="wait">
+                    {buzzSettling && (
+                      <motion.div
+                        key="settling"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="flex items-center justify-center gap-2 py-3"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-warning-accent/60 animate-pulse" />
+                        <span className="text-xs font-bold text-text-muted uppercase tracking-widest animate-pulse">
+                          {t('buzzQueue')}…
+                        </span>
+                      </motion.div>
+                    )}
+                    {!buzzSettling && committedBuzzes.length > 0 && (
+                      <motion.div
+                        key="committed"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.25, ease: "easeOut" }}
+                        className="space-y-3"
+                      >
                         <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{t('buzzQueue')}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {sortedBuzzes.map(([pId, ts], idx) => {
+                          {committedBuzzes.map(([pId, ts], idx) => {
                             const p = room.players[pId];
                             if (!p) return null;
                             const isMe = pId === myId;
                             const isFirst = idx === 0;
                             const react = reactionFor(ts as number);
                             return (
-                              <div
+                              <motion.div
                                 key={pId}
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2, delay: idx * 0.04 }}
                                 className={`flex items-center gap-3 p-3 rounded-2xl border transition-colors ${
-                                  isFirst 
-                                    ? "bg-warning-accent/15 border-warning-accent/30 shadow-inner" 
+                                  isFirst
+                                    ? "bg-warning-accent/15 border-warning-accent/30 shadow-inner"
                                     : "bg-white/5 border-white/5"
                                 } ${isMe && !isFirst ? "ring-1 ring-primary-accent/50" : ""}`}
                               >
@@ -781,7 +867,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                                     <Zap className="w-3 h-3" /> {fmtReaction(react)}
                                   </span>
                                 )}
-                              </div>
+                              </motion.div>
                             );
                           })}
                         </div>
