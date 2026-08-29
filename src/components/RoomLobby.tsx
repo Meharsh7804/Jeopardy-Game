@@ -217,7 +217,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-bold text-text-muted hover:text-white transition-all"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            {t("backToLobby") || "Back to Lobby"}
+            {t("Back To Lobby") || "Back to Lobby"}
           </button>
         </header>
 
@@ -509,7 +509,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-bold text-text-muted hover:text-white transition-all"
           >
             <ArrowLeft className="w-4 h-4" />
-            {t("backToLobby") || "Back to Lobby"}
+            {t("Back To Lobby") || "Back to Lobby"}
           </button>
         </header>
 
