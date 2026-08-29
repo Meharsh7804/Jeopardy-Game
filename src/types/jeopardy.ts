@@ -43,6 +43,7 @@ export type RoomPhase =
 export interface RoomPlayer {
   id: string; // playerId (nanoid / random)
   name: string;
+  avatar?: string; // player avatar id or image url
   score: number;
   joinedAt: number;
   isHost: boolean;
@@ -73,6 +74,7 @@ export interface ActiveQuestion {
   isDailyDouble?: boolean;
   revealAnswer: boolean;
   openedAt?: number; // server-resolved timestamp of when buzzing opened — reaction time = buzz - openedAt
+  audioPlaying?: boolean; // master host audio state: true = playing, false = paused
 }
 
 export interface RoomReaction {

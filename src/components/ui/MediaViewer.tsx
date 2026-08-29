@@ -1,11 +1,20 @@
 import React, { useRef, useEffect } from "react";
 import type { QuestionType } from "../../types/jeopardy";
 
+export const isAudioQuestion = (q?: { type?: QuestionType; mediaUrl?: string } | null): boolean => {
+  if (!q || !q.mediaUrl) return false;
+  if (q.type === "audio") return true;
+  if (q.mediaUrl.startsWith("data:audio")) return true;
+  if (/\.(mp3|wav|ogg|m4a|aac)$/i.test(q.mediaUrl)) return true;
+  return false;
+};
+
 interface MediaViewerProps {
   url: string;
   type?: QuestionType;
   className?: string;
   autoPlay?: boolean;
+  audioPlaying?: boolean;
   onEnded?: () => void;
   onError?: (e: React.SyntheticEvent<HTMLMediaElement | HTMLImageElement>) => void;
 }
@@ -15,22 +24,26 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   type,
   className = "w-full h-full object-contain",
   autoPlay = true,
+  audioPlaying,
   onEnded,
   onError,
 }) => {
-  const isAudio = type === "audio" || url.startsWith("data:audio") || url.match(/\.(mp3|wav|ogg)$/i);
+  const isAudio = type === "audio" || url.startsWith("data:audio") || url.match(/\.(mp3|wav|ogg|m4a|aac)$/i);
   const isVideo = type === "video" || url.startsWith("data:video") || url.match(/\.(mp4|webm|ogg)$/i);
 
   const mediaRef = useRef<HTMLMediaElement>(null);
 
   useEffect(() => {
-    if (autoPlay && mediaRef.current) {
+    if (!mediaRef.current) return;
+    if (audioPlaying === false) {
+      mediaRef.current.pause();
+    } else if (audioPlaying === true || (audioPlaying === undefined && autoPlay)) {
       mediaRef.current.play().catch(() => {
         // Autoplay may be blocked by browser policies if the user hasn't interacted
         // with the document yet. This is handled gracefully by ignoring the rejection.
       });
     }
-  }, [url, autoPlay]);
+  }, [url, autoPlay, audioPlaying]);
 
   if (isAudio) {
     return (

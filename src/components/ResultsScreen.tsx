@@ -78,7 +78,7 @@ const computeWinCelebration = (
 
   let tier: WinTier = "normal";
   if (iWon) {
-    if (margin === 1) tier = "onePoint";
+    if (margin === 100) tier = "onePoint";
     else if (margin <= 5) tier = "clutch";
     else if (memory.biggestComeback >= 400) tier = "comeback";
     else if ((top.bestStreak ?? 0) >= 5) tier = "hugeStreak";
@@ -310,8 +310,8 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
       wc.sound();
       confettiBus.burst({ count: wc.confetti, duration: 3200 });
       // Win-type badges. Secret ones reveal themselves only on unlock.
-      if (margin === 1 && grantAchievement("onePointWonder")) achievementBus.emit("onePointWonder");
-      if (margin <= 5 && margin !== 1 && grantAchievement("clutchMaster")) achievementBus.emit("clutchMaster");
+      if (margin === 100 && grantAchievement("onePointWonder")) achievementBus.emit("onePointWonder");
+      if (margin <= 5 && grantAchievement("clutchMaster")) achievementBus.emit("clutchMaster");
       if (memory.biggestComeback >= 400 && grantAchievement("comebackKid")) achievementBus.emit("comebackKid");
     } else if (me) {
       const acc = accuracyOf(me);
@@ -471,6 +471,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           <div className="relative shrink-0">
             <PlayerAvatar
               seed={winner.id}
+              avatar={winner.avatar}
               name={winner.name}
               size={64}
               className="rounded-full ring-2 ring-warning-accent/60 shadow-[0_0_25px_rgba(245,158,11,0.4)]"
@@ -559,6 +560,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                       <div className={`relative ${poseClass}`}>
                         <PlayerAvatar
                           seed={p.id}
+                          avatar={p.avatar}
                           name={p.name}
                           size={rank === 1 ? 80 : 60}
                           className={`rounded-full ring-2 ${
@@ -625,6 +627,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                   <div className="absolute inset-0 bg-warning-accent/40 blur-2xl rounded-full" />
                   <PlayerAvatar
                     seed={players[0].id}
+                    avatar={players[0].avatar}
                     name={players[0].name}
                     size={96}
                     className="relative z-10 rounded-full ring-4 ring-warning-accent/60 shadow-[0_0_40px_rgba(245,158,11,0.5)]"
@@ -661,7 +664,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
             >
               <div className="flex items-center gap-3 min-w-0">
                 <span className="font-black text-text-muted w-6 text-center">#{i + 4}</span>
-                <PlayerAvatar seed={p.id} name={p.name} size={28} className="shrink-0 rounded-full" />
+                <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={28} className="shrink-0 rounded-full" />
                 <span className={`font-bold text-sm truncate ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
                   {p.name} {p.id === myId && `(${t("you")})`}
                 </span>
@@ -693,7 +696,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <PlayerAvatar seed={p.id} name={p.name} size={24} className="shrink-0 rounded-full" />
+                  <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={24} className="shrink-0 rounded-full" />
                   <span className={`font-bold text-sm truncate ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
                     {p.name}
                   </span>

@@ -452,7 +452,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
       <header className="glass-panel sticky top-0 z-40 px-5 py-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-accent to-secondary-accent flex items-center justify-center shadow-lg ring-2 ring-white/10">
-            <PlayerAvatar seed={myId} name={myName} size={36} className="rounded-full" />
+            <PlayerAvatar seed={myId} avatar={myPlayer?.avatar} name={myName} size={36} className="rounded-full" />
           </div>
           <div>
             <p className="font-display font-bold text-base text-white leading-tight">
@@ -544,7 +544,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                           : "glass-panel"
                       }`}
                     >
-                      <PlayerAvatar seed={p.id} name={p.name} size={48} className="mx-auto mb-3 rounded-full ring-2 ring-white/10" />
+                      <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={48} className="mx-auto mb-3 rounded-full ring-2 ring-white/10" />
                       <p className="text-sm font-bold text-white truncate px-1">
                         {p.name}
                       </p>
@@ -649,7 +649,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                         ) : (
                           <span className="text-[10px] font-bold text-text-muted w-4 text-center">#{i + 1}</span>
                         )}
-                        <PlayerAvatar seed={p.id} name={p.name} size={28} className="shrink-0 rounded-full" />
+                        <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={28} className="shrink-0 rounded-full" />
                         <span className={`font-bold text-sm truncate ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
                           {p.name} {p.id === myId && `(${t('you')})`}
                         </span>
@@ -691,7 +691,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 </div>
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
-                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-56 w-full object-contain"
+                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} audioPlaying={room.activeQuestion.audioPlaying} className="max-h-56 w-full object-contain"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -845,7 +845,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                                 <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${isFirst ? "bg-warning-accent text-black" : "bg-white/10 text-text-muted"}`}>
                                   {idx + 1}
                                 </div>
-                                <PlayerAvatar seed={p.id} name={p.name} size={28} className="shrink-0 rounded-full" />
+                                <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={28} className="shrink-0 rounded-full" />
                                 <div className="flex-1 min-w-0">
                                   <p className={`font-bold text-sm truncate ${isFirst ? "text-warning-accent" : "text-white"}`}>
                                     {p.name} {isMe && <span className="text-[10px] ml-1 text-primary-accent">({t('you')})</span>}
@@ -922,7 +922,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 </div>
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
-                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-56 w-full object-contain"
+                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} audioPlaying={room.activeQuestion.audioPlaying} className="max-h-56 w-full object-contain"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -955,7 +955,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               <div className="glass-panel-heavy p-8 rounded-3xl text-center space-y-6 shadow-2xl border border-white/10 relative">
                 {room.activeQuestion.mediaUrl && (
                   <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-lg mx-auto max-w-full max-h-56 bg-black">
-                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-56 w-full object-contain"
+                    <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} audioPlaying={room.activeQuestion.audioPlaying} className="max-h-56 w-full object-contain"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}

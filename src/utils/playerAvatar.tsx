@@ -1,9 +1,10 @@
 import React from "react";
-import { avatarFor } from "./avatarImages";
+import { getAvatarByIdOrSeed } from "./avatarImages";
 
 interface PlayerAvatarProps {
   seed: string;
   name: string;
+  avatar?: string;
   size?: number;
   className?: string;
 }
@@ -11,10 +12,11 @@ interface PlayerAvatarProps {
 export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   seed,
   name,
+  avatar: avatarProp,
   size = 56,
   className = "",
 }) => {
-  const avatar = avatarFor(seed);
+  const avatar = getAvatarByIdOrSeed(avatarProp, seed);
 
   if (!avatar) {
     const fallbackUrl = `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(

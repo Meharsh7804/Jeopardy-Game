@@ -26,6 +26,8 @@ import {
   serverTimestamp,
   increment,
 } from "firebase/database";
+import { avatarImages } from "../utils/avatarImages";
+import { loadProfile } from "../utils/profile";
 import type {
   Room,
   RoomPlayer,
@@ -156,9 +158,10 @@ interface RoomContextProps {
   hydrated: boolean;
 
   // host actions
-  createRoom: (quiz: Quiz, hostName: string) => Promise<string>;
+  createRoom: (quiz: Quiz, hostName: string, avatar?: string) => Promise<string>;
   startGame: () => Promise<void>;
   openQuestion: (question: Question, categoryName: string) => Promise<void>;
+  setAudioPlaying: (playing: boolean) => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
   splitPoints: (playerIds: string[]) => Promise<void>;
   adjustScore: (playerId: string, delta: number, reason: string) => Promise<void>;
@@ -170,7 +173,7 @@ interface RoomContextProps {
   kickPlayer: (playerId: string) => Promise<void>;
 
   // player actions
-  joinRoom: (code: string, playerName: string) => Promise<void>;
+  joinRoom: (code: string, playerName: string, avatar?: string) => Promise<void>;
   buzz: () => Promise<void>;
   sendReaction: (emoji: string) => Promise<void>;
 
@@ -328,7 +331,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // ── Host: create room ─────────────────────────────────────────────────────
   const createRoom = useCallback(
-    async (quiz: Quiz, hostName: string): Promise<string> => {
+    async (quiz: Quiz, hostName: string, avatar?: string): Promise<string> => {
       setLoading(true);
       setError(null);
       try {
@@ -336,6 +339,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         const hostPlayer: RoomPlayer = {
           id: myId,
           name: hostName,
+          avatar: avatar || loadProfile().avatar || avatarImages[0]?.id,
           score: 0,
           joinedAt: Date.now(),
           isHost: true,
@@ -421,6 +425,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         text: question.text,
         type: question.type,
         revealAnswer: false,
+        audioPlaying: true,
         // Server-clock start time so reaction times are comparable to the
         // server-stamped buzz timestamps, regardless of any device clock.
         // (Stored as the Firebase sentinel; resolves to an epoch-ms number.)
@@ -458,6 +463,27 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     },
     [roomCode],
+  );
+
+  const setAudioPlaying = useCallback(
+    async (playing: boolean) => {
+      if (!roomCode || !room?.activeQuestion) return;
+      setRoom((prev) =>
+        prev && prev.activeQuestion
+          ? {
+              ...prev,
+              activeQuestion: {
+                ...prev.activeQuestion,
+                audioPlaying: playing,
+              },
+            }
+          : prev,
+      );
+      await update(ref(db, `rooms/${roomCode}/activeQuestion`), {
+        audioPlaying: playing,
+      });
+    },
+    [roomCode, room],
   );
 
   // ── Host: judge answer correct / incorrect ────────────────────────────────
@@ -728,7 +754,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   // any existing `buzzes/{myId}` entry untouched so a mid-"buzzing"-phase
   // refresh silently preserves (rather than erases) their queue position.
   const joinRoom = useCallback(
-    async (code: string, playerName: string) => {
+    async (code: string, playerName: string, avatar?: string) => {
       setLoading(true);
       setError(null);
       const upperCode = code.toUpperCase().trim();
@@ -743,6 +769,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         const player: RoomPlayer = {
           id: myId,
           name: playerName,
+          avatar: avatar || existingPlayer?.avatar || loadProfile().avatar || avatarImages[0]?.id,
           score: existingPlayer?.score ?? 0,
           // Preserve the original joinedAt on rejoin so lobby ordering and
           // "who has been here longest" stay stable across refreshes.
@@ -893,6 +920,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         createRoom,
         startGame,
         openQuestion,
+        setAudioPlaying,
         judgeAnswer,
         splitPoints,
         adjustScore,

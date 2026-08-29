@@ -1,4 +1,4 @@
-const avatars = import.meta.glob("../assets/avatars/*.jpg", {
+const avatars = import.meta.glob("../assets/avatars/*.{jpg,jpeg,png,webp,svg,gif}", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -13,9 +13,15 @@ const POSITION_OVERRIDES: Record<string, string> = {
 
 const sorted = Object.entries(avatars).sort(([a], [b]) => a.localeCompare(b));
 
-export const avatarImages = sorted.map(([path, src]) => {
-  const file = path.split("/").pop()?.replace(/\.(jpg|jpeg|png|webp)$/i, "") ?? "";
-  return { src, position: POSITION_OVERRIDES[file] ?? "center" };
+export interface AvatarOption {
+  id: string;
+  src: string;
+  position: string;
+}
+
+export const avatarImages: AvatarOption[] = sorted.map(([path, src]) => {
+  const file = path.split("/").pop()?.replace(/\.(jpg|jpeg|png|webp|svg|gif)$/i, "") ?? "";
+  return { id: file, src, position: POSITION_OVERRIDES[file] ?? "center" };
 });
 
 // Deterministic string hash (FNV-1a) — a player keeps the same random avatar
@@ -29,7 +35,21 @@ const hashSeed = (s: string) => {
   return h >>> 0;
 };
 
-export const avatarFor = (seed: string) =>
+export const avatarFor = (seed: string): AvatarOption | undefined =>
   avatarImages.length === 0
     ? undefined
     : avatarImages[hashSeed(seed) % avatarImages.length];
+
+export const getAvatarByIdOrSeed = (
+  avatarIdOrSrc?: string,
+  seed?: string
+): AvatarOption | undefined => {
+  if (avatarIdOrSrc) {
+    const found = avatarImages.find(
+      (a) => a.id === avatarIdOrSrc || a.src === avatarIdOrSrc
+    );
+    if (found) return found;
+  }
+  if (seed) return avatarFor(seed);
+  return avatarImages[0];
+};

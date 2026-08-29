@@ -2,6 +2,7 @@ import type { Room } from "../types/jeopardy";
 
 export interface PlayerProfile {
   name: string;
+  avatar?: string;
   gamesPlayed: number;
   gamesWon: number;
   totalCorrect: number;
@@ -73,6 +74,13 @@ export const saveProfileName = (name: string) => {
   const p = loadProfile();
   if (p.name === name) return;
   p.name = name;
+  persist(p);
+};
+
+export const saveProfileAvatar = (avatar: string) => {
+  const p = loadProfile();
+  if (p.avatar === avatar) return;
+  p.avatar = avatar;
   persist(p);
 };
 

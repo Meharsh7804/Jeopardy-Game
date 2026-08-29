@@ -160,11 +160,11 @@ export function emitCloseWin(
   if (margin <= 0) return;
 
   const iWon = top.id === myId;
-  if (margin === 1) {
+  if (margin === 100) {
     momentBus.emit({
       icon: "📸",
-      title: iWon ? "Won by a single point!" : "A single point!",
-      subtitle: iWon ? "One point. Destiny, apparently." : `${top.name} edged it by 1. Brutal.`,
+      title: iWon ? "Won by 100 points!" : "100 points margin!",
+      subtitle: iWon ? "100 points. Perfect precision." : `${top.name} edged it by 100 points.`,
       tone: "celebrate",
     });
     soundManager.playClutch();

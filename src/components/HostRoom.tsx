@@ -7,6 +7,8 @@ import {
   Copy,
   Check,
   Play,
+  Pause,
+  Volume2,
   Crown,
   Eye,
   X,
@@ -29,7 +31,7 @@ import { StartCountdown } from "./StartCountdown";
 import { useSettings } from "../context/SettingsContext";
 import { QrJoinModal } from "./QrJoinModal";
 import { AchievementToast } from "./AchievementToast";
-import { MediaViewer } from "./ui/MediaViewer";
+import { MediaViewer, isAudioQuestion } from "./ui/MediaViewer";
 import { useScoreCelebrations } from "../delight/celebrate";
 import { momentBus } from "../delight/moments";
 import { useRoomCodeWordEgg } from "../delight/gameEggs";
@@ -72,6 +74,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     myId,
     startGame,
     openQuestion,
+    setAudioPlaying,
     judgeAnswer,
     splitPoints,
     undoLastScoreChange,
@@ -495,7 +498,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                             className="flex flex-col items-center gap-3 p-6 rounded-3xl glass-panel border border-white/10 shadow-xl group hover:border-primary-accent/40 transition-colors min-w-[140px]"
                           >
                              <div className="relative">
-                               <PlayerAvatar seed={p.id} name={p.name} size={80} className={`rounded-full ring-4 ring-white/5 group-hover:ring-primary-accent/30 transition-all drop-shadow-xl ${p.connected === false ? "opacity-40 grayscale" : ""}`} />
+                               <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={80} className={`rounded-full ring-4 ring-white/5 group-hover:ring-primary-accent/30 transition-all drop-shadow-xl ${p.connected === false ? "opacity-40 grayscale" : ""}`} />
                                 <span
                                   title={p.connected === false ? `${p.name} disconnected` : `${p.name} connected`}
                                   className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-primary-bg ${p.connected === false ? "bg-danger-accent" : "bg-green-500 animate-pulse"}`}
@@ -651,7 +654,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           ) : (
                             <span className="text-[10px] text-text-muted font-bold w-4 text-center shrink-0">#{i + 1}</span>
                           )}
-                          <PlayerAvatar seed={p.id} name={p.name} size={32} className="shrink-0 rounded-full" />
+                          <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={32} className="shrink-0 rounded-full" />
                           <span className="font-bold text-sm text-white truncate">{p.name}</span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -718,7 +721,37 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
                   {room.activeQuestion.mediaUrl && (
                     <div className="relative rounded-3xl overflow-hidden border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)] mx-auto w-fit max-h-72 bg-black">
-                      <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} className="max-h-72 object-contain" />
+                      <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} audioPlaying={room.activeQuestion.audioPlaying} className="max-h-72 object-contain" />
+                    </div>
+                  )}
+
+                  {isAudioQuestion(room.activeQuestion) && (
+                    <div className="flex items-center justify-between p-4 rounded-2xl bg-black/60 border border-white/15 shadow-xl my-4 max-w-lg mx-auto">
+                      <div className="flex items-center gap-3 text-left">
+                        <Volume2 className="w-5 h-5 text-warning-accent animate-pulse shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-white uppercase tracking-wider">Host Audio Control</p>
+                          <p className="text-[10px] text-text-muted">Sync playback for all connected players</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setAudioPlaying(room.activeQuestion?.audioPlaying === false ? true : false)}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-display font-bold text-sm transition-all shadow-lg ${
+                          room.activeQuestion?.audioPlaying === false
+                            ? "bg-success-accent text-white hover:bg-success-accent/80 hover:scale-105"
+                            : "bg-warning-accent text-black hover:bg-warning-accent/80 hover:scale-105"
+                        }`}
+                      >
+                        {room.activeQuestion?.audioPlaying === false ? (
+                          <>
+                            <Play className="w-4 h-4 fill-current" /> Play Audio
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="w-4 h-4 fill-current" /> Pause Audio
+                          </>
+                        )}
+                      </button>
                     </div>
                   )}
 
@@ -890,7 +923,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 shadow-inner ${isFirst ? "bg-warning-accent text-black" : "bg-black/50 text-text-muted border border-white/10"}`}>
                                    {idx + 1}
                                  </div>
-                                 <PlayerAvatar seed={p.id} name={p.name} size={40} className="shrink-0 rounded-full ring-2 ring-white/10" />
+                                 <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={40} className="shrink-0 rounded-full ring-2 ring-white/10" />
                                  <div className="flex-1 min-w-0">
                                    <p className={`font-display font-black text-lg truncate leading-tight ${isFirst ? "text-warning-accent" : "text-white"}`}>
                                      {p.name}
