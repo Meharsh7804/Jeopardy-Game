@@ -231,8 +231,8 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
       return;
     }
 
-    if (file.size > 4 * 1024 * 1024) {
-      alert("Media must be under 4 MB.");
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Media must be under 10 MB.");
       return;
     }
 
