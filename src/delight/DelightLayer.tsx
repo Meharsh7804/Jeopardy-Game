@@ -2,6 +2,9 @@ import React from "react";
 import { MomentToast } from "./moments";
 import { GlobalConfetti } from "./celebrate";
 import { useGlobalSecrets } from "./secrets";
+import { AbilityOverlay } from "../abilities/AbilityOverlay";
+import { AbilityNotices } from "../abilities/AbilityNotices";
+import { AbilityWatcher } from "../abilities/AbilityWatcher";
 
 /**
  * Always-mounted delight UI: playful moment toasts + the global confetti
@@ -15,6 +18,9 @@ export const DelightLayer: React.FC = () => {
     <>
       <MomentToast />
       <GlobalConfetti />
+      <AbilityOverlay />
+      <AbilityNotices />
+      <AbilityWatcher />
     </>
   );
 };

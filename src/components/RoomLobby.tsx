@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRoom } from "../context/RoomContext";
 import { useQuizLibrary } from "../context/QuizLibraryContext";
 import { useSettings } from "../context/SettingsContext";
+import { db } from "../firebase";
+import { ref, onValue } from "firebase/database";
 import type { Quiz } from "../types/jeopardy";
 import {
   Lock,
@@ -26,6 +28,7 @@ import {
 } from "lucide-react";
 import { PlayerAvatar } from "../utils/playerAvatar";
 import { avatarImages } from "../utils/avatarImages";
+import { CharacterCard } from "./ui/CharacterCard";
 import { Logo } from "./ui/Logo";
 import { SettingsModal } from "./SettingsModal";
 import { HeroQuizArena } from "./HeroQuizArena";
@@ -89,6 +92,22 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   const [quizSearch, setQuizSearch] = useState("");
   const profile = loadProfile();
   const [selectedAvatar, setSelectedAvatar] = useState(() => profile.avatar || avatarImages[0]?.id || "");
+
+  // Live "who's already in this room" — used to grey out taken characters in the
+  // join picker so two players can't pick the same avatar.
+  const [takenAvatars, setTakenAvatars] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const code = roomCode.trim().toUpperCase();
+    if (code.length !== 6) {
+      setTakenAvatars({});
+      return;
+    }
+    const ownersRef = ref(db, `rooms/${code}/avatarOwners`);
+    const unsub = onValue(ownersRef, (snap) => {
+      setTakenAvatars(snap.val() ?? {});
+    });
+    return () => unsub();
+  }, [roomCode]);
 
   const xp = xpOf(profile);
   const level = levelInfo(xp);
@@ -514,18 +533,20 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
         </header>
 
         {/* ── Centered Content Container ────────────────────────────── */}
-        <main className="relative z-10 flex-1 max-w-2xl mx-auto w-full px-5 py-8 sm:py-12 space-y-8 flex flex-col justify-center">
-          <div className="text-center space-y-2">
-            <h1 className="text-4xl sm:text-5xl font-display font-black text-white tracking-tight">
+        <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col justify-center gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
+            <h1 className="text-3xl sm:text-4xl font-display font-black text-white tracking-tight">
               Join Live Game
             </h1>
             <p className="text-sm text-text-muted">
-              Choose your nickname, select your character avatar, and enter the room code.
+              Pick a character, grab their ability, enter the room code.
             </p>
           </div>
 
+          <div className="grid md:grid-cols-[2fr_1fr] gap-5 items-stretch">
+
           {/* Card 1: Nickname & Avatar Selection */}
-          <div className="glass-panel-heavy rounded-3xl p-6 sm:p-8 border border-white/15 shadow-2xl space-y-6">
+          <div className="glass-panel-heavy rounded-3xl p-4 sm:p-6 border border-white/15 shadow-2xl flex flex-col gap-4">
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1">
                 {t("yourName")}
@@ -539,37 +560,49 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
               />
             </div>
 
-            <div className="space-y-3">
+            <div className="flex flex-col gap-2 flex-1 min-h-0">
               <div className="flex items-center justify-between ml-1">
                 <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
                   Choose Avatar
                 </label>
                 <span className="text-[11px] text-secondary-accent font-bold">
-                  Selected Character
+                  {avatarImages.length} characters · 1 ability each
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 p-4 rounded-2xl bg-black/40 border border-white/10 max-h-72 overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-5 lg:grid-cols-7 gap-2.5 p-3 rounded-2xl bg-black/40 border border-white/10 flex-1 min-h-0 auto-rows-fr content-start">
                 {avatarImages.map((av) => {
                   const isSelected = selectedAvatar === av.id;
+                  const taken = !!takenAvatars[av.id] && takenAvatars[av.id] !== myId;
                   return (
                     <button
                       key={av.id}
                       type="button"
+                      disabled={taken}
                       onClick={() => setSelectedAvatar(av.id)}
                       className={`relative rounded-2xl p-1.5 transition-all flex flex-col items-center justify-center ${
-                        isSelected
-                          ? "ring-4 ring-secondary-accent scale-105 bg-secondary-accent/25 shadow-lg shadow-secondary-accent/20"
-                          : "hover:scale-105 opacity-75 hover:opacity-100 bg-white/5 border border-white/5 hover:border-white/20"
+                        taken
+                          ? "opacity-30 grayscale cursor-not-allowed"
+                          : isSelected
+                            ? "ring-4 ring-secondary-accent scale-105 bg-secondary-accent/25 shadow-lg shadow-secondary-accent/20"
+                            : "hover:scale-105 opacity-75 hover:opacity-100 bg-white/5 border border-white/5 hover:border-white/20"
                       }`}
-                      title={av.id}
+                      title={taken ? `${av.id} — already taken in this room` : av.id}
                     >
                       <img
                         src={av.src}
                         alt={av.id}
-                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-md"
+                        className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full object-cover shadow-md"
+                        style={{ objectPosition: av.position }}
                       />
-                      {isSelected && (
+                      {taken && (
+                        <span className="absolute inset-x-0 bottom-4 flex items-center justify-center">
+                          <span className="text-[8px] font-black uppercase tracking-widest bg-black/80 text-danger-accent px-1.5 py-0.5 rounded-md border border-danger-accent/40 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5" /> TAKEN
+                          </span>
+                        </span>
+                      )}
+                      {isSelected && !taken && (
                         <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-secondary-accent text-white flex items-center justify-center text-xs font-black shadow-lg ring-2 ring-black">
                           ✓
                         </span>
@@ -581,8 +614,15 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
             </div>
           </div>
 
-          {/* Card 2: Room Code Input */}
-          <div className="glass-panel-heavy rounded-3xl p-6 sm:p-8 border border-white/15 shadow-2xl space-y-3">
+          {/* Right column: Character dossier + Room code + Join + stats */}
+          <div className="flex flex-col gap-4">
+            <CharacterCard
+              avatarId={selectedAvatar || undefined}
+              taken={!!selectedAvatar && !!takenAvatars[selectedAvatar] && takenAvatars[selectedAvatar] !== myId}
+            />
+
+          {/* Card 2: Room Code + Join */}
+          <div className="glass-panel-heavy rounded-3xl p-5 sm:p-6 border border-white/15 shadow-2xl space-y-3 flex-1">
             <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest ml-1 block text-center sm:text-left">
               {t("roomCode")}
             </label>
@@ -593,13 +633,39 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-              className="w-full bg-black/50 border border-white/15 rounded-2xl px-4 py-4 text-3xl sm:text-4xl font-display font-extrabold text-center tracking-[0.5em] text-secondary-accent outline-none focus:border-secondary-accent focus:ring-2 focus:ring-secondary-accent transition-all placeholder:text-text-muted/20 shadow-inner uppercase"
+              className="w-full bg-black/50 border border-white/15 rounded-2xl px-4 py-3 text-3xl sm:text-4xl font-display font-extrabold text-center tracking-[0.5em] text-secondary-accent outline-none focus:border-secondary-accent focus:ring-2 focus:ring-secondary-accent transition-all placeholder:text-text-muted/20 shadow-inner uppercase"
             />
+
+            {/* Join Room CTA & Error */}
+            <div className="space-y-3">
+              {(localError || error) && (
+                <motion.p
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-xs text-danger-accent bg-danger-accent/10 border border-danger-accent/20 rounded-xl px-4 py-3 font-medium text-center"
+                >
+                  {localError || error}
+                </motion.p>
+              )}
+
+              <button
+                onClick={handleJoin}
+                disabled={loading}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-secondary-accent to-pink-600 hover:from-pink-500 hover:to-secondary-accent font-display font-black text-base sm:text-lg text-white shadow-[0_0_30px_rgba(236,72,153,0.4)] hover:shadow-[0_0_40px_rgba(236,72,153,0.6)] transition-all flex items-center justify-center gap-3 active:scale-[0.99] disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <LogIn className="w-6 h-6" />
+                )}
+                {t("joinRoomBtn") || "Join Room"}
+              </button>
+            </div>
           </div>
 
           {/* Stats Preview Card (if profile has history) */}
           {profile.gamesPlayed > 0 && (
-            <div className="p-5 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-2.5">
               <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
                 <Trophy className="w-3.5 h-3.5 text-warning-accent" /> {t("myStats")}
               </p>
@@ -608,10 +674,10 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                   seed={myId}
                   avatar={selectedAvatar || profile.avatar}
                   name={profile.name || playerName || "You"}
-                  size={48}
+                  size={40}
                   className="shrink-0 rounded-full ring-2 ring-white/10 shadow-lg"
                 />
-                <div className="grid grid-cols-3 gap-x-4 gap-y-2 flex-1">
+                <div className="grid grid-cols-3 gap-x-4 gap-y-1 flex-1">
                   <div>
                     <p className="font-display font-black text-lg text-white leading-none">
                       {profile.gamesPlayed}
@@ -640,31 +706,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
               </div>
             </div>
           )}
-
-          {/* Join Room CTA & Error */}
-          <div className="space-y-3">
-            {(localError || error) && (
-              <motion.p
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-xs text-danger-accent bg-danger-accent/10 border border-danger-accent/20 rounded-xl px-4 py-3 font-medium text-center"
-              >
-                {localError || error}
-              </motion.p>
-            )}
-
-            <button
-              onClick={handleJoin}
-              disabled={loading}
-              className="w-full py-4.5 rounded-2xl bg-gradient-to-r from-secondary-accent to-pink-600 hover:from-pink-500 hover:to-secondary-accent font-display font-black text-base sm:text-lg text-white shadow-[0_0_30px_rgba(236,72,153,0.4)] hover:shadow-[0_0_40px_rgba(236,72,153,0.6)] transition-all flex items-center justify-center gap-3 active:scale-[0.99] disabled:opacity-50"
-            >
-              {loading ? (
-                <Loader2 className="w-6 h-6 animate-spin" />
-              ) : (
-                <LogIn className="w-6 h-6" />
-              )}
-              {t("joinRoomBtn") || "Join Room"}
-            </button>
+          </div>
           </div>
         </main>
       </motion.div>

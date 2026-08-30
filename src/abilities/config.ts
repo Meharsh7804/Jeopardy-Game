@@ -1,0 +1,262 @@
+import type { AbilityDef } from "./types";
+
+/**
+ * Every avatar in the roster wields exactly one ability. Keyed by avatar id
+ * so a player's ability is whatever character they picked. The engine is
+ * data-driven: same machinery, per-avatar flavor + parameters.
+ */
+export const ABILITIES: Record<string, AbilityDef> = {
+  modi: {
+    id: "modi", avatarId: "modi", name: "Modi", abilityName: "Modi-fied Points",
+    tagline: "Bank the same points as whoever answers correctly.",
+    longDesc: "On the next question, whoever answers correctly wins the points — and Modi banks the exact same amount too, whether Modi buzzed or not. Double the winners, one answer.",
+    kind: "modiShare", animation: "glitch",
+    emoji: "🪔", accent: "warning",
+  },
+  selmon: {
+    id: "selmon", avatarId: "selmon", name: "Selmon Bhoi", abilityName: "Selmon Tax",
+    tagline: "Everyone else loses 15% — you keep the haul.",
+    longDesc: "A mass 'contribution': every other player instantly loses 15% of their score (rounded), and you gain the entire sum. The host applies the Bhoi tax at once.",
+    kind: "taxNow", animation: "chaos", immediate: true, params: { confirm: true },
+    emoji: "🐅", accent: "primary",
+  },
+  daredevil: {
+    id: "daredevil", avatarId: "daredevil", name: "Daredevil", abilityName: "Blind Answer",
+    tagline: "See the next answer's letter skeleton.",
+    longDesc: "On the next question, YOU see a letter skeleton of the correct answer — the first and last letters of every word — for the whole question. Star-spangled fingers crossed on the rest.",
+    kind: "clue", animation: "flash", params: { clueType: "skeletonAnswer" },
+    emoji: "🦸", accent: "danger",
+  },
+  kratos: {
+    id: "kratos", avatarId: "kratos", name: "Kratos", abilityName: "God of Ward",
+    tagline: "Steal 30% from a chosen player.",
+    longDesc: "Choose a player and instantly pocket 30% of their current score. Rage unleashed, boy.",
+    kind: "stealNow", animation: "impact", needsTarget: true, immediate: true, params: { pct: 0.3, confirm: true },
+    emoji: "🪓", accent: "danger",
+  },
+  thanos: {
+    id: "thanos", avatarId: "thanos", name: "Thanos", abilityName: "Perfectly Balanced",
+    tagline: "Halve another player's score.",
+    longDesc: "Choose a player — their score is instantly reduced to half. As all things should be.",
+    kind: "halveNow", animation: "impact", needsTarget: true, immediate: true, params: { confirm: true },
+    emoji: "💜", accent: "ink",
+  },
+  dead: {
+    id: "dead", avatarId: "dead", name: "Deadpool", abilityName: "You Can't Kill Me",
+    tagline: "Your next wrong answer doesn't count.",
+    longDesc: "Your next wrong answer is forgiven: no score loss, your buzz stays in the queue, and if you then answer the same question correctly you still bank half the value.",
+    kind: "secondChance", animation: "zoom",
+    emoji: "🔴", accent: "danger",
+  },
+  joker: {
+    id: "joker", avatarId: "joker", name: "Joker", abilityName: "Why So Serious?",
+    tagline: "Roll your next correct ×1.5, ×2 or ×2.5.",
+    longDesc: "A lucky roll locked in the moment you activate: your next correct answer is worth ×1.5, ×2… or a jackpot ×2.5. No negatives — the house always pays.",
+    kind: "rollNow", animation: "chaos", params: { roll: true, confirm: true },
+    emoji: "🃏", accent: "secondary",
+  },
+  doom: {
+    id: "doom", avatarId: "doom", name: "Dr. Doom", abilityName: "Foresight",
+    tagline: "See the first 3 letters of the next answer.",
+    longDesc: "On the next question you can see the first 3 letters of the correct answer — while everyone else sweat bullets.",
+    kind: "clue", animation: "freeze", params: { clueType: "letters3" },
+    emoji: "🤖", accent: "success",
+  },
+  homelander: {
+    id: "homelander", avatarId: "homelander", name: "Homelander", abilityName: "I Can Do Whatever I Want",
+    tagline: "Steal 40% from the current leader.",
+    longDesc: "Instantly steal 40% of whatever the current leader has. Approved (by you).",
+    kind: "stealAuto", animation: "impact", autoTarget: true, immediate: true, params: { targetMode: "leader", pct: 0.4, confirm: true },
+    emoji: "🌟", accent: "primary",
+  },
+  honey: {
+    id: "honey", avatarId: "honey", name: "Honey Singh", abilityName: "Desi Half-Loss",
+    tagline: "Your next wrong answer costs only half.",
+    longDesc: "Honey-sweetened: the next time you answer wrong, you lose only half the value instead of the full amount.",
+    kind: "halfWrong", animation: "burst",
+    emoji: "🍯", accent: "warning",
+  },
+  hritik: {
+    id: "hritik", avatarId: "hritik", name: "Hrithik", abilityName: "Jadoo ×2",
+    tagline: "Your next correct answer is worth double.",
+    longDesc: "Jadoo magic: your next correct answer is worth 2× the question value (bonuses included).",
+    kind: "multiplier", animation: "glitch", params: { mult: 2 },
+    emoji: "💥", accent: "primary",
+  },
+  iron: {
+    id: "iron", avatarId: "iron", name: "Iron Man", abilityName: "JARVIS Hints",
+    tagline: "See 2 letters + the length of the next answer.",
+    longDesc: "On the next question, JARVIS shows you two random letters of the answer and its total length.",
+    kind: "clue", animation: "spotlight", params: { clueType: "letters2" },
+    emoji: "🦾", accent: "danger",
+  },
+  john: {
+    id: "john", avatarId: "john", name: "John Cena", abilityName: "You Can't C Me",
+    tagline: "Only you can buzz for 8 seconds.",
+    longDesc: "When the next question opens, only YOU can buzz for the first 8 seconds. Everyone else sees a lock.",
+    kind: "windowLock", animation: "flash", params: { windowMs: 8000 },
+    emoji: "👀", accent: "warning",
+  },
+  anime: {
+    id: "anime", avatarId: "anime", name: "Anime Freak", abilityName: "Weeb Window",
+    tagline: "Only you can buzz for 10 seconds.",
+    longDesc: "When the next question opens, only YOU can buzz for the first 10 seconds. The door is weeb-guarded.",
+    kind: "windowLock", animation: "glitch", params: { windowMs: 10000 },
+    emoji: "🎌", accent: "secondary",
+  },
+  billy: {
+    id: "billy", avatarId: "billy", name: "Billy Butcher", abilityName: "Line-Jump",
+    tagline: "Your next buzz jumps to #1.",
+    longDesc: "No matter how fast anyone else slams their button, your next buzz is ranked FIRST. Cheeky, inneit.",
+    kind: "frontOfLine", animation: "zoom",
+    emoji: "🔪", accent: "danger",
+  },
+  chims: {
+    id: "chims", avatarId: "chims", name: "Chimps", abilityName: "Sussy Vibe",
+    tagline: "See the length of the next answer.",
+    longDesc: "On the next question you learn exactly how long the answer is — suspiciously helpful.",
+    kind: "clue", animation: "freeze", params: { clueType: "vague" },
+    emoji: "🐵", accent: "success",
+  },
+  hamza: {
+    id: "hamza", avatarId: "hamza", name: "Hamza", abilityName: "Jinx Flash",
+    tagline: "Your next correct answer is worth ×1.25.",
+    longDesc: "A pinch of Hamza-luck: your next correct answer is worth 1.25× the question value.",
+    kind: "multiplier", animation: "burst", params: { mult: 1.25 },
+    emoji: "🍀", accent: "success",
+  },
+  luffy: {
+    id: "luffy", avatarId: "luffy", name: "Luffy", abilityName: "Meat!",
+    tagline: "Instantly gain +30% of your score.",
+    longDesc: "Like Luffy scarfing down a plate of meat mid-battle: instantly gain 30% of your current score (minimum +100). A quick refuel when you need it most.",
+    kind: "boostNow", animation: "zoom", immediate: true, params: { boost: "pctScore", boostPct: 0.3, boostMin: 100, confirm: true },
+    emoji: "🍖", accent: "success",
+  },
+  monkey: {
+    id: "monkey", avatarId: "monkey", name: "Monkey", abilityName: "Banana First-Last",
+    tagline: "See the first & last letters of the next answer.",
+    longDesc: "On the next question you see the first and last letters of the correct answer.",
+    kind: "clue", animation: "burst", params: { clueType: "firstLast" },
+    emoji: "🍌", accent: "warning",
+  },
+  msd: {
+    id: "msd", avatarId: "msd", name: "Thala", abilityName: "Captain's Calm",
+    tagline: "Instantly bank a cool +150.",
+    longDesc: "No drama — instantly add 150 points to your score. Calm finisher energy.",
+    kind: "boostNow", animation: "spotlight", immediate: true, params: { boost: "flat", boostValue: 150, confirm: true },
+    emoji: "👑", accent: "primary",
+  },
+  perry: {
+    id: "perry", avatarId: "perry", name: "Perry", abilityName: "Ghost Protocol",
+    tagline: "Vanish from the leaderboard for a question.",
+    longDesc: "While the next question is live, other players can't see you on standings or in the buzz queue. Spooky.",
+    kind: "hide", animation: "freeze",
+    emoji: "🥷", accent: "ink",
+  },
+  prabhas: {
+    id: "prabhas", avatarId: "prabhas", name: "Prabhas", abilityName: "Rebel Energy",
+    tagline: "Instantly gain +25% of your score.",
+    longDesc: "Instantly gain 25% of your current score (minimum +100). Every point counts, Rebel.",
+    kind: "boostNow", animation: "impact", immediate: true, params: { boost: "pctScore", boostPct: 0.25, boostMin: 100, confirm: true },
+    emoji: "🔥", accent: "danger",
+  },
+  professor: {
+    id: "professor", avatarId: "professor", name: "Professor", abilityName: "Academic Insight",
+    tagline: "See length + vowels of the next answer.",
+    longDesc: "On the next question you learn the answer's length and how many vowels it contains.",
+    kind: "clue", animation: "spotlight", params: { clueType: "length" },
+    emoji: "🧠", accent: "ink",
+  },
+  pw: {
+    id: "pw", avatarId: "pw", name: "PW", abilityName: "Price Hike",
+    tagline: "Your next correct answer is worth ×1.5.",
+    longDesc: "Like a price hike at the end of the year: your next correct answer is worth 1.5× the question value.",
+    kind: "multiplier", animation: "glitch", params: { mult: 1.5 },
+    emoji: "📈", accent: "primary",
+  },
+  raftaar: {
+    id: "raftaar", avatarId: "raftaar", name: "Raftaar", abilityName: "Fast Beat Window",
+    tagline: "Only you can buzz for 6 seconds.",
+    longDesc: "When the next question opens, only YOU can buzz for the first 6 seconds — beat them to the drop.",
+    kind: "windowLock", animation: "glitch", params: { windowMs: 6000 },
+    emoji: "🎤", accent: "secondary",
+  },
+  ryder: {
+    id: "ryder", avatarId: "ryder", name: "Ryder", abilityName: "Taste the Prime",
+    tagline: "Steal 25% from a chosen player.",
+    longDesc: "Choose a player and instantly steal 25% of their current score. Prime you.",
+    kind: "stealNow", animation: "zoom", needsTarget: true, immediate: true, params: { pct: 0.25, confirm: true },
+    emoji: "🛒", accent: "warning",
+  },
+  samay: {
+    id: "samay", avatarId: "samay", name: "Samay Raina", abilityName: "Dark Jokes = Jail",
+    tagline: "Wrong answerers go to jail.",
+    longDesc: "Activate this before a question. Anyone who buzzes and answers wrong on that question is jailed — they can't buzz on the next one. The roast writes itself.",
+    kind: "jailWrong", animation: "chaos",
+    emoji: "🔒", accent: "danger",
+  },
+  srk: {
+    id: "srk", avatarId: "srk", name: "King Khan", abilityName: "Pathaan Bounce-Back",
+    tagline: "Your next wrong answer doesn't count.",
+    longDesc: "Your next wrong answer is forgiven: no score loss, your buzz stays in the queue, and answering the same question correctly still banks half the value.",
+    kind: "secondChance", animation: "impact",
+    emoji: "🕶️", accent: "primary",
+  },
+  tate: {
+    id: "tate", avatarId: "tate", name: "Tate", abilityName: "Ligma Trap",
+    tagline: "Trap a player: their next wrong costs double.",
+    longDesc: "Choose a player. If their next answer is wrong, they lose DOUBLE the question value. What color is their Bugatti?",
+    kind: "trapWrong", animation: "freeze", needsTarget: true, params: { confirm: true },
+    emoji: "🍹", accent: "danger",
+  },
+  techno: {
+    id: "techno", avatarId: "techno", name: "Techno", abilityName: "Toby Points",
+    tagline: "Instantly gain +15% of your score.",
+    longDesc: "Instantly gain 15% of your current score (minimum +50). Sub count, meet score count.",
+    kind: "boostNow", animation: "zoom", immediate: true, params: { boost: "pctScore", boostPct: 0.15, boostMin: 50, confirm: true },
+    emoji: "🤖", accent: "ink",
+  },
+  lee: {
+    id: "lee", avatarId: "lee", name: "Lee", abilityName: "Risky Lee",
+    tagline: "Gamble: NORMAL ×1 or RISK ×2.",
+    longDesc: "You choose during the next question: NORMAL (next correct ×1) or RISK (next correct ×2, but your next wrong costs ×−2).",
+    kind: "risky", animation: "chaos", needsChoice: true, params: { risky: true },
+    emoji: "🎲", accent: "secondary",
+  },
+  thomas: {
+    id: "thomas", avatarId: "thomas", name: "Thomas Shelby", abilityName: "No F**kin' Fighting",
+    tagline: "Lock a player out of buzzing for 10s.",
+    longDesc: "Choose a player — they can't buzz for the first 10 seconds of the next question.",
+    kind: "silence", animation: "freeze", needsTarget: true, params: { windowMs: 10000, confirm: true },
+    emoji: "🎩", accent: "ink",
+  },
+  virat: {
+    id: "virat", avatarId: "virat", name: "Virat", abilityName: "The Chase",
+    tagline: "×1.5 on your next correct — while behind.",
+    longDesc: "Your next correct answer is worth 1.5× IF you're still chasing the leader when you answer.",
+    kind: "multiplier", animation: "impact", params: { mult: 1.5, onlyIfChasing: true },
+    emoji: "🏏", accent: "success",
+  },
+  walter: {
+    id: "walter", avatarId: "walter", name: "Walter White", abilityName: "Say My Name",
+    tagline: "Steal 50% from the current leader.",
+    longDesc: "Instantly steal 50% of the current leader's score. You're goddamn right.",
+    kind: "stealAuto", animation: "freeze", autoTarget: true, immediate: true, params: { targetMode: "leader", pct: 0.5, confirm: true },
+    emoji: "🧪", accent: "warning",
+  },
+  "kr$na": {
+    id: "kr$na", avatarId: "kr$na", name: "Kr$na", abilityName: "Sales Round",
+    tagline: "Give a player the answer's letter skeleton.",
+    longDesc: "Choose a player — they get a letter skeleton of the next question's answer (first and last letters of each word), on your dime.",
+    kind: "clue", animation: "glitch", needsTarget: true, params: { clueType: "skeletonAnswer", confirm: true },
+    emoji: "💸", accent: "secondary",
+  },
+};
+
+/** All avatar ids that have an ability (every avatar in the roster). */
+export const ABILITY_AVATAR_IDS: string[] = Object.keys(ABILITIES);
+
+export const getAbilityForAvatar = (
+  avatarId?: string,
+): AbilityDef | undefined =>
+  avatarId ? ABILITIES[avatarId] : undefined;

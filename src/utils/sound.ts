@@ -192,6 +192,14 @@ class SoundManager {
     this.initCtx();
   }
 
+  getVolume() {
+    return this.volume;
+  }
+
+  isMuted() {
+    return this.muted;
+  }
+
   private playOscillator(
     type: OscillatorType,
     freqs: number[],

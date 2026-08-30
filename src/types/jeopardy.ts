@@ -1,5 +1,7 @@
 // ─── Question / Quiz types ───────────────────────────────────────────────────
 
+import type { AbilityKind } from "../abilities/types";
+
 export type QuestionType = "text" | "image" | "audio" | "video" | "both";
 
 export interface Question {
@@ -55,6 +57,39 @@ export interface RoomPlayer {
   fastestBuzz?: number | null; // fastest buzz reaction time in ms
   streak?: number; // current consecutive-correct streak (0 = no streak)
   bestStreak?: number; // longest streak reached this game
+  abilityId?: string; // avatar ability this player wields (every avatar maps to one)
+  abilityUnlocked?: boolean; // true once the player has 2 total correct answers
+  abilityUsed?: boolean; // true once their once-per-game ability has been fired
+}
+
+// ─── Character Ability (Powerup) types ───────────────────────────────────────
+
+export type RoomAbilityEffectStatus = "pending" | "applied";
+
+/**
+ * One active ability instance, keyed by the activating player's id.
+ *
+ * Lifecycle:
+ *  - "pending": freshly activated (or armed & waiting). Immediate kinds
+ *    (boost/tax/steal/halve) are resolved by the host and then deleted.
+ *    Question-scoped kinds (clue/window/…) are stamped "applied" + tagged with
+ *    the question id when a question opens.
+ *  - "applied": live for the current question (question-scoped kinds). Deleted
+ *    when the question resolves. Carry-forward kinds (multiplier, second
+ *    chance, redirect, …) stay "pending" until the engine consumes them.
+ */
+export interface RoomAbilityEffect {
+  id: string; // unique instance id
+  playerId: string; // who activated it
+  abilityId: string; // "modi", "hritik", …
+  kind?: AbilityKind; // resolved at activation (mirrors the config def)
+  targetId?: string; // chosen or auto-resolved recipient of the effect
+  option?: string; // joker roll / risky choice / boost amount / etc.
+  immediate?: boolean; // true → host applies & deletes on activation
+  status: RoomAbilityEffectStatus;
+  appliedToQuestionId?: string; // set when stamped onto a question
+  secondChanceUsed?: boolean; // dead/srk: forgiveness already spent
+  createdAt: number; // server-resolved epoch ms
 }
 
 export interface BuzzEvent {
@@ -95,6 +130,10 @@ export interface Room {
   buzzes?: Record<string, number>; // playerId -> timestamp
   scoreHistory?: Record<string, ScoreHistoryEntry>; // entryId → entry, audit trail of every score change
   reactions?: Record<string, RoomReaction>; // playerId → current reaction
+  avatarOwners?: Record<string, string>; // avatarId → playerId, atomic avatar-uniqueness claims
+  abilityEffects?: Record<string, RoomAbilityEffect>; // playerId → active ability instance
+  jail?: string[]; // ids jailed for the current open question (buzz-gated)
+  jailNext?: string[]; // ids being jailed by the question being judged — applied when the next question opens
   startAt?: number; // server-resolved timestamp when the start countdown began
   createdAt: number;
 }

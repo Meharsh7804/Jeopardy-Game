@@ -38,6 +38,9 @@ import { useRoomCodeWordEgg } from "../delight/gameEggs";
 import { useIdleNudge } from "../delight/watch";
 import { useMatchMemory } from "../delight/memories";
 import { lobbyVibe, LobbyCurrent } from "../delight/lobby";
+import { AbilityBadge } from "../abilities/AbilityBadge";
+import { rankBuzzes, isHidden } from "../abilities/engine";
+import { getAbilityForAvatar } from "../abilities/config";
 
 const getGridStyle = (count: number): React.CSSProperties => ({
   gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
@@ -235,7 +238,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
   const players = Object.values(room.players).sort((a, b) => b.score - a.score || (a.joinedAt ?? 0) - (b.joinedAt ?? 0));
   const gamePlayers = players.filter((p) => !p.isHost);
-  const sortedBuzzes = Object.entries(room.buzzes || {}).sort((a, b) => a[1] - b[1]);
+  // Server-authoritative queue order + any frontOfLine jump.
+  const rankedQueue = rankBuzzes(room.buzzes, room.abilityEffects);
+  const sortedBuzzes = rankedQueue;
 
   // Reaction time helpers — both buzz timestamps and openedAt are resolved by
   // the Firebase server clock, so the difference is fair across devices.
@@ -510,6 +515,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                  <span className="block text-[10px] font-bold uppercase tracking-widest text-danger-accent">Disconnected</span>
                                )}
                              </span>
+                             <div className="mt-1">
+                               <AbilityBadge player={p} />
+                             </div>
                              <button
                                onClick={() => handleKick(p.id)}
                                className="opacity-0 group-hover:opacity-100 mt-2 px-3 py-1 rounded-lg bg-danger-accent/10 text-danger-accent text-xs font-bold hover:bg-danger-accent/20 transition-all"
@@ -599,22 +607,26 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                           onClick={() => handleOpenQuestion(q, cat.name)}
                           whileHover={!done ? { scale: 1.05, y: -3 } : {}}
                           whileTap={!done ? { scale: 0.95 } : {}}
-                          animate={!done ? { boxShadow: ["0 0 0px rgba(245,158,11,0)", "0 0 14px rgba(245,158,11,0.28)", "0 0 0px rgba(245,158,11,0)"] } : undefined}
-                          transition={!done ? { duration: 4, repeat: Infinity, ease: "easeInOut", delay: (rowIdx % 4) * 0.4 } : undefined}
-                          style={!done ? { animationDelay: `${(rowIdx % 4) * 0.4}s` } : undefined}
-                          className={`rounded-xl p-3 font-display font-black text-xl text-center flex items-center justify-center min-h-[4.5rem] transition-all shadow-md ${
+                          className={`relative overflow-hidden rounded-xl p-3 font-display font-black text-xl text-center flex items-center justify-center min-h-[4.5rem] transition-all shadow-md ${
                             done
                               ? "glass-panel opacity-50 cursor-not-allowed border-2 border-success-accent/30 text-success-accent"
                               : "bg-gradient-to-br from-[#0c1838] to-[#12234f] border-2 border-[#1e3a8a] text-warning-accent hover:border-warning-accent hover:shadow-[0_0_15px_rgba(245,158,11,0.3)] cursor-pointer drop-shadow-lg"
                           }`}
                         >
+                          {!done && (
+                            <span
+                              aria-hidden
+                              className="pointer-events-none absolute inset-0 rounded-xl tile-glow"
+                              style={{ animationDelay: `${(rowIdx % 4) * 0.4}s` }}
+                            />
+                          )}
                           {done ? (
-                            <span className="flex flex-col items-center leading-none pointer-events-none">
+                            <span className="relative z-10 flex flex-col items-center leading-none pointer-events-none">
                               <Check className="w-5 h-5" />
                               <span className="text-[9px] uppercase tracking-widest mt-1 opacity-80">mapped</span>
                             </span>
                           ) : (
-                            `$${q.value}`
+                            <span className="relative z-10">${q.value}</span>
                           )}
                         </motion.button>
                       );
@@ -655,7 +667,20 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                             <span className="text-[10px] text-text-muted font-bold w-4 text-center shrink-0">#{i + 1}</span>
                           )}
                           <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={32} className="shrink-0 rounded-full" />
-                          <span className="font-bold text-sm text-white truncate">{p.name}</span>
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold text-sm text-white truncate flex items-center gap-1.5">
+                              {p.name}
+                              {isHidden(p.id, room.abilityEffects) && (
+                                <span className="text-[8px] font-black text-text-muted uppercase tracking-widest">👻</span>
+                              )}
+                              {room.jail?.includes(p.id) && (
+                                <span className="text-[8px] font-black text-danger-accent uppercase tracking-widest">🔒 JAIL</span>
+                              )}
+                            </span>
+                            <div className="mt-0.5">
+                              <AbilityBadge player={p} />
+                            </div>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {(p.streak ?? 0) >= 2 && (
@@ -760,6 +785,41 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                   </p>
 
                   <ReactionOverlay reactions={room.reactions} />
+
+                  {/* Live + armed ability effects for the host */}
+                  {(() => {
+                    const qId = room.activeQuestion.questionId;
+                    const applied = Object.values(room.abilityEffects || {}).filter(
+                      (e) => e.status === "applied" && e.appliedToQuestionId === qId,
+                    );
+                    const armed = Object.values(room.abilityEffects || {}).filter(
+                      (e) => e.status === "pending",
+                    );
+                    if (applied.length === 0 && armed.length === 0) return null;
+                    const chip = (e: typeof applied[number]) => {
+                      const def = getAbilityForAvatar(e.abilityId);
+                      const target = e.targetId && e.playerId !== e.targetId
+                        ? room.players[e.targetId]?.name
+                        : undefined;
+                      return (
+                        <span
+                          key={e.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-white"
+                          title={`${def?.name} · ${def?.abilityName}${target ? ` → ${target}` : ""}`}
+                        >
+                          <span className="text-[11px] leading-none">{def?.emoji}</span>
+                          {def?.abilityName}
+                          {target && <span className="text-text-muted normal-case tracking-normal font-bold">→ {target}</span>}
+                        </span>
+                      );
+                    };
+                    return (
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 mt-6">
+                        {applied.map(chip)}
+                        {armed.map(chip)}
+                      </div>
+                    );
+                  })()}
                   
                   {/* Host-only Answer visibility (before reveal) */}
                   {!room.activeQuestion.revealAnswer && activeLocalQuestion?.answer && (
@@ -885,14 +945,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
 
                    <div className="space-y-3 min-h-[200px]">
                      <AnimatePresence mode="popLayout">
-                       {sortedBuzzes.length > 0 ? (
-                         sortedBuzzes.map(([pId, ts], idx) => {
-                           const p = room.players[pId];
-                           if (!p) return null;
-                           const isFirst = idx === 0;
-                           const react = reactionFor(ts as number);
-                           const fast = react !== null && react <= 1000;
-                           return (
+{sortedBuzzes.length > 0 ? (
+                          sortedBuzzes.map(({ playerId: pId, ts, override }, idx) => {
+                            const p = room.players[pId];
+                            if (!p) return null;
+                            const isFirst = idx === 0;
+                            const react = reactionFor(ts as number);
+                            const fast = react !== null && react <= 1000;
+                            const avFx = room.abilityEffects?.[pId];
+                            const isRisk = avFx?.kind === "risky" && avFx.option === "risk";
+                            const isHiddenNow = isHidden(pId, room.abilityEffects);
+                            return (
                              <motion.div
                                initial={{ opacity: 0, x: 20, scale: 0.9 }}
                                animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -923,18 +986,36 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 shadow-inner ${isFirst ? "bg-warning-accent text-black" : "bg-black/50 text-text-muted border border-white/10"}`}>
                                    {idx + 1}
                                  </div>
-                                 <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={40} className="shrink-0 rounded-full ring-2 ring-white/10" />
-                                 <div className="flex-1 min-w-0">
-                                   <p className={`font-display font-black text-lg truncate leading-tight ${isFirst ? "text-warning-accent" : "text-white"}`}>
-                                     {p.name}
-                                   </p>
-                                   <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
-                                     Score: {p.score}
-                                     {(p.streak ?? 0) >= 2 && (
-                                       <span className="text-warning-accent ml-2">🔥 {p.streak} streak</span>
-                                     )}
-                                   </p>
-                                 </div>
+<PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={40} className="shrink-0 rounded-full ring-2 ring-white/10" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`font-display font-black text-lg truncate leading-tight ${isFirst ? (override ? "text-secondary-accent" : "text-warning-accent") : "text-white"}`}>
+                                      {p.name}
+                                      {isHiddenNow && (
+                                        <span className="ml-2 text-[8px] font-black text-text-muted uppercase tracking-widest align-middle inline-flex items-center gap-1">
+                                          👻 hidden
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
+                                      Score: {p.score}
+                                      {(p.streak ?? 0) >= 2 && (
+                                        <span className="text-warning-accent ml-2">🔥 {p.streak} streak</span>
+                                      )}
+                                    </p>
+                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                      {override && (
+                                        <span className="text-[9px] font-black text-secondary-accent uppercase tracking-widest bg-secondary-accent/15 border border-secondary-accent/40 px-1.5 py-0.5 rounded-md">
+                                          ⭐ front of line
+                                        </span>
+                                      )}
+                                      {isRisk && (
+                                        <span className="text-[9px] font-black text-danger-accent uppercase tracking-widest bg-danger-accent/15 border border-danger-accent/40 px-1.5 py-0.5 rounded-md">
+                                          ☠️ RISK ×2
+                                        </span>
+                                      )}
+                                      <AbilityBadge player={p} />
+                                    </div>
+                                  </div>
                                  {fmtReaction(react) && (
                                    <span
                                      className={`shrink-0 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border ${

@@ -25,6 +25,7 @@ import {
   onDisconnect,
   serverTimestamp,
   increment,
+  runTransaction,
 } from "firebase/database";
 import { avatarImages } from "../utils/avatarImages";
 import { loadProfile } from "../utils/profile";
@@ -36,7 +37,25 @@ import type {
   Quiz,
   Question,
   ScoreHistoryEntry,
+  RoomAbilityEffect,
 } from "../types/jeopardy";
+import { getAbilityForAvatar } from "../abilities/config";
+import {
+  isQuestionScopedKind,
+  isImmediateKind,
+  computeCorrectAward,
+  computeWrongPenalty,
+  buzzGate,
+  jokerRoll,
+  boostAmount,
+  stealTransfer,
+  taxPayout,
+  resolveAutoTarget,
+  rankBuzzes,
+  leaderOf,
+  activeModiShareFor,
+} from "../abilities/engine";
+import { abilityNoticeBus } from "../abilities/internal";
 
 // ─── session persistence ─────────────────────────────────────────────────────
 
@@ -140,6 +159,32 @@ const sanitize = (obj: any): any => {
   return obj;
 };
 
+/** Player ids holding applied question-scoped effects for the given question. */
+const questionScopedEffectPlayers = (room: Room, qId: string | undefined): string[] =>
+  Object.entries(room.abilityEffects || {})
+    .filter(
+      ([, e]) =>
+        isQuestionScopedKind(e.kind) &&
+        e.status === "applied" &&
+        e.appliedToQuestionId === qId,
+    )
+    .map(([pid]) => pid);
+
+/** Update-path deletions for question-scoped + consumed effects. */
+const effectCleanupUpdates = (
+  room: Room,
+  qId: string | undefined,
+  extraConsume: string[] = [],
+): Record<string, any> => {
+  const updates: Record<string, any> = {};
+  const targets = new Set<string>([
+    ...questionScopedEffectPlayers(room, qId),
+    ...extraConsume.filter((id) => room.abilityEffects?.[id]),
+  ]);
+  for (const pid of targets) updates[`abilityEffects/${pid}`] = null;
+  return updates;
+};
+
 // ─── context shape ────────────────────────────────────────────────────────────
 
 interface RoomContextProps {
@@ -174,8 +219,17 @@ interface RoomContextProps {
 
   // player actions
   joinRoom: (code: string, playerName: string, avatar?: string) => Promise<void>;
-  buzz: () => Promise<void>;
+  buzz: () => Promise<"ok" | "muted">;
   sendReaction: (emoji: string) => Promise<void>;
+
+  // character abilities
+  activateAbility: (payload: {
+    abilityId: string;
+    targetId?: string;
+    option?: string;
+  }) => Promise<void>;
+  setRiskChoice: (choice: "normal" | "risk") => Promise<void>;
+  applyImmediateAbility: (effectPlayerId: string) => Promise<void>;
 
   // leave
   leaveRoom: () => Promise<void>;
@@ -297,6 +351,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
             fastestBuzz: existingPlayer?.fastestBuzz ?? null,
             streak: existingPlayer?.streak ?? 0,
             bestStreak: existingPlayer?.bestStreak ?? 0,
+            abilityId:
+              existingPlayer?.abilityId ?? getAbilityForAvatar(existingPlayer?.avatar)?.id,
+            abilityUnlocked: existingPlayer?.abilityUnlocked ?? false,
+            abilityUsed: existingPlayer?.abilityUsed ?? false,
           };
 
           const updates: Record<string, any> = {
@@ -335,11 +393,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       setLoading(true);
       setError(null);
       try {
-        const code = genId(6);
+const code = genId(6);
+        const hostAvatar = avatar || loadProfile().avatar || avatarImages[0]?.id;
         const hostPlayer: RoomPlayer = {
           id: myId,
           name: hostName,
-          avatar: avatar || loadProfile().avatar || avatarImages[0]?.id,
+          avatar: hostAvatar,
           score: 0,
           joinedAt: Date.now(),
           isHost: true,
@@ -350,6 +409,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           wrongCount: 0,
           streak: 0,
           bestStreak: 0,
+          abilityId: getAbilityForAvatar(hostAvatar)?.id,
+          abilityUnlocked: false,
+          abilityUsed: false,
         };
 
         const newRoom: Room = {
@@ -442,6 +504,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       // receive the authoritative snapshot over the wire, so everyone ends up
       // in sync — but the host is never left staring at the board.
       const optimistic = { ...aq, openedAt: 0 } as ActiveQuestion;
+      const nextJail = room?.jailNext ?? [];
       setRoom((prev) =>
         prev
           ? {
@@ -450,19 +513,37 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
               buzzes: {},
               reactions: {},
               phase: "buzzing" as RoomPhase,
+              jail: nextJail.length > 0 ? nextJail : undefined,
+              jailNext: undefined,
             }
           : prev,
       );
       // Write activeQuestion, clear buzzes, and flip phase atomically.
       // Every subscriber (host + all players) reacts to the same snapshot.
+      const abilityUpdates: Record<string, any> = {};
+      for (const [pid, fx] of Object.entries(room?.abilityEffects || {})) {
+        if (isQuestionScopedKind(fx.kind) && fx.status === "pending") {
+          abilityUpdates[`abilityEffects/${pid}/status`] = "applied";
+          abilityUpdates[`abilityEffects/${pid}/appliedToQuestionId`] = question.id;
+        }
+      }
+      // Jail: apply pending jail list to the question that is now opening,
+      // then clear the pending list so the next open is unjaild unless
+      // the question being judged re-populates it.
+      const jailUpdate: Record<string, any> = {
+        jail: nextJail.length > 0 ? nextJail : null,
+        jailNext: null,
+      };
       await update(ref(db, `rooms/${roomCode}`), {
         activeQuestion: aq,
         buzzes: null as any,
         reactions: null as any,
         phase: "buzzing" as RoomPhase,
+        ...abilityUpdates,
+        ...jailUpdate,
       });
     },
-    [roomCode],
+    [roomCode, room],
   );
 
   const setAudioPlaying = useCallback(
@@ -494,16 +575,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     async (correct: boolean) => {
       if (!roomCode || !room) return;
 
-      // Sort buzzes server-authoritatively by timestamp ascending
-      const sortedBuzzes = Object.entries(room.buzzes || {}).sort(
-        (a, b) => a[1] - b[1],
-      );
-      const buzzPlayerId = sortedBuzzes[0]?.[0];
+      // Server-authoritative buzz priority — a frontOfLine effect forces the
+      // owner to #1 no matter when they slammed the button. Once it gets the
+      // owner the first crack at the clue, the guarantee itself is spent.
+      const ranked = rankBuzzes(room.buzzes, room.abilityEffects);
+      const buzzPlayerId = ranked[0]?.playerId;
       if (!buzzPlayerId) return;
+      const spentFrontOfLine = ranked[0]?.override ? [buzzPlayerId] : [];
 
       const value = room.activeQuestion?.value ?? 0;
-      const currentScore = room.players[buzzPlayerId]?.score ?? 0;
-      const playerName = room.players[buzzPlayerId]?.name ?? "Player";
+      const qId = room.activeQuestion?.questionId;
+      const effects = room.abilityEffects || {};
+      const players = room.players;
 
       // Reaction time: both timestamps are server-resolved, so the diff is
       // accurate even if players' device clocks are skewed.
@@ -520,54 +603,145 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           ? Math.max(1, Math.round(value * 0.1))
           : 0;
 
-      const delta = correct ? value + firstBuzzBonus : -value;
-      const bonusNote =
-        firstBuzzBonus > 0
-          ? ` (+$${firstBuzzBonus} ⚡ first-buzz bonus)`
-          : "";
-      const { entry, newScore } = buildScoreChange(
-        buzzPlayerId,
-        currentScore,
-        delta,
-        `${playerName} ${correct ? "answered correctly" : "answered incorrectly"} — "${room.activeQuestion?.categoryName ?? ""}" for $${value}${bonusNote}`,
-        room.activeQuestion?.questionId,
-      );
+      const updates: Record<string, any> = {};
 
-      const updates: Record<string, any> = {
-        [`players/${buzzPlayerId}/score`]: newScore,
-        [`scoreHistory/${entry.id}`]: entry,
-      };
-
-      // Reflex + streak stats
-      const prevStreak = room.players[buzzPlayerId]?.streak ?? 0;
       if (correct) {
-        updates[`players/${buzzPlayerId}/correctCount`] = increment(1);
+        const award = computeCorrectAward({
+          ownerId: buzzPlayerId,
+          value,
+          firstBuzzBonus,
+          effects,
+          players,
+        });
+        const payeeName = players[award.payeeId]?.name ?? "Player";
+        const ownerName = players[buzzPlayerId]?.name ?? "Player";
+        const bonusNote =
+          firstBuzzBonus > 0 ? ` (+$${firstBuzzBonus} ⚡ first-buzz bonus)` : "";
+        const redirectNote =
+          award.payeeId !== buzzPlayerId ? ` → redirected to ${payeeName}` : "";
+        const { entry, newScore } = buildScoreChange(
+          award.payeeId,
+          players[award.payeeId]?.score ?? 0,
+          award.points,
+          `${ownerName} answered correctly — "${room.activeQuestion?.categoryName ?? ""}" for $${value}${bonusNote}${redirectNote}${award.note ? ` [${award.note}]` : ""}`,
+          qId,
+        );
+        updates[`players/${award.payeeId}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
+
+        // Modi Share (modi-fied points): whoever answers correctly wins the
+        // points, and Modi banks the same amount — whether Modi buzzed or not.
+        const modiShareFx = activeModiShareFor(effects, qId);
+        if (modiShareFx && modiShareFx.playerId !== buzzPlayerId) {
+          const mId = modiShareFx.playerId;
+          const mDef = getAbilityForAvatar(modiShareFx.abilityId);
+          const mEntry = buildScoreChange(
+            mId,
+            players[mId]?.score ?? 0,
+            award.points,
+            `${players[mId]?.name ?? "Player"} shared ${ownerName}'s correct — +$${award.points} [${mDef?.abilityName}]`,
+            qId,
+          );
+          updates[`players/${mId}/score`] = mEntry.newScore;
+          updates[`scoreHistory/${mEntry.entry.id}`] = mEntry.entry;
+        }
+
+        // Reflex + streak stats always land on the owner (even a redirect still
+        // counts as their correct answer).
+        const prevStreak = players[buzzPlayerId]?.streak ?? 0;
+        const newCorrectCount = (players[buzzPlayerId]?.correctCount ?? 0) + 1;
+        updates[`players/${buzzPlayerId}/correctCount`] = newCorrectCount;
         const newStreak = prevStreak + 1;
         updates[`players/${buzzPlayerId}/streak`] = newStreak;
-        const prevBest = room.players[buzzPlayerId]?.bestStreak ?? 0;
+        const prevBest = players[buzzPlayerId]?.bestStreak ?? 0;
         if (newStreak > prevBest) {
           updates[`players/${buzzPlayerId}/bestStreak`] = newStreak;
         }
+        // Unlock the once-per-game ability at 2 total correct answers.
+        if (
+          newCorrectCount >= 2 &&
+          players[buzzPlayerId]?.abilityId &&
+          !players[buzzPlayerId]?.abilityUsed
+        ) {
+          updates[`players/${buzzPlayerId}/abilityUnlocked`] = true;
+        }
+
+        updates[`completedQuestions/${qId}`] = true;
+        updates["activeQuestion"] = null;
+        updates["phase"] = "board" as RoomPhase;
+        updates["buzzes"] = null;
+        // Question-scoped effects expire and consumed effects are deleted.
+        Object.assign(
+          updates,
+          effectCleanupUpdates(room, qId, [...award.consume, ...spentFrontOfLine]),
+        );
       } else {
-        updates[`players/${buzzPlayerId}/wrongCount`] = increment(1);
-        updates[`players/${buzzPlayerId}/streak`] = 0;
+        const res = computeWrongPenalty({
+          playerId: buzzPlayerId,
+          value,
+          effects,
+        });
+
+        if (res.forgiven) {
+          // Bounce-back (second chance): no penalty, buzz is kept, question
+          // stays live. Mark the forgiveness so a rebound pays half.
+          updates[`abilityEffects/${buzzPlayerId}/secondChanceUsed`] = true;
+          // A spent frontOfLine guarantee still ends here — they got their
+          // guaranteed crack at the clue even though it bounced back.
+          for (const pid of spentFrontOfLine) updates[`abilityEffects/${pid}`] = null;
+        } else {
+          const playerName = players[buzzPlayerId]?.name ?? "Player";
+          const { entry, newScore } = buildScoreChange(
+            buzzPlayerId,
+            players[buzzPlayerId]?.score ?? 0,
+            -res.penalty,
+            `${playerName} answered incorrectly — "${room.activeQuestion?.categoryName ?? ""}" for -$${value}${res.note ? ` [${res.note}]` : ""}`,
+            qId,
+          );
+          updates[`players/${buzzPlayerId}/score`] = newScore;
+          updates[`scoreHistory/${entry.id}`] = entry;
+
+          if (res.wrongCount) {
+            updates[`players/${buzzPlayerId}/wrongCount`] = increment(1);
+          }
+          updates[`players/${buzzPlayerId}/streak`] = 0;
+
+          // Dark Jokes = Jail (samay): if his jailWrong effect is live on THIS
+          // question, a real wrong answer books the offender for the next open.
+          const samayJailActive =
+            qId !== undefined &&
+            Object.values(effects).some(
+              (e) =>
+                e.kind === "jailWrong" &&
+                e.status === "applied" &&
+                e.appliedToQuestionId === qId,
+            ) &&
+            !res.keepBuzz &&
+            res.wrongCount;
+          if (samayJailActive) {
+            const nextList = new Set(room?.jailNext ?? []);
+            nextList.add(buzzPlayerId);
+            updates["jailNext"] = [...nextList];
+          }
+
+          if (!res.keepBuzz) {
+            // Incorrect — remove this player's buzz so next in queue is evaluated
+            updates[`buzzes/${buzzPlayerId}`] = null;
+          }
+          Object.assign(
+            updates,
+            effectCleanupUpdates(room, qId, [...res.consume, ...spentFrontOfLine]),
+          );
+        }
       }
-      const prevFastest = room.players[buzzPlayerId]?.fastestBuzz;
+
+      // Reflex stat tracked for the buzzer regardless of correctness.
+      const prevFastest = players[buzzPlayerId]?.fastestBuzz;
       if (
         reactionMs !== undefined &&
         (prevFastest === undefined || prevFastest === null || reactionMs < prevFastest)
       ) {
         updates[`players/${buzzPlayerId}/fastestBuzz`] = reactionMs;
-      }
-
-      if (correct && room.activeQuestion) {
-        updates[`completedQuestions/${room.activeQuestion.questionId}`] = true;
-        updates["activeQuestion"] = null;
-        updates["phase"] = "board" as RoomPhase;
-        updates["buzzes"] = null;
-      } else {
-        // Incorrect — remove this player's buzz so next in queue is evaluated
-        updates[`buzzes/${buzzPlayerId}`] = null;
       }
 
       await update(ref(db, `rooms/${roomCode}`), updates);
@@ -702,6 +876,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       activeQuestion: null,
       buzzes: null as any,
       [`completedQuestions/${qId}`]: true,
+      ...effectCleanupUpdates(room, qId),
     });
   }, [roomCode, room]);
 
@@ -723,6 +898,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       buzzes: null,
       completedQuestions: null,
       scoreHistory: null,
+      abilityEffects: null,
     };
     for (const pid of Object.keys(room.players)) {
       updates[`players/${pid}/score`] = 0;
@@ -730,6 +906,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       updates[`players/${pid}/correctCount`] = 0;
       updates[`players/${pid}/wrongCount`] = 0;
       updates[`players/${pid}/fastestBuzz`] = null;
+      updates[`players/${pid}/abilityUnlocked`] = false;
+      updates[`players/${pid}/abilityUsed`] = false;
     }
     await update(ref(db, `rooms/${roomCode}`), updates);
   }, [roomCode, room, myId]);
@@ -741,8 +919,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!roomCode) return;
       await remove(ref(db, `rooms/${roomCode}/players/${playerId}`));
       await remove(ref(db, `rooms/${roomCode}/buzzes/${playerId}`));
+      await remove(ref(db, `rooms/${roomCode}/abilityEffects/${playerId}`));
+      // Release any avatar slot the kicked player held.
+      const avatarId = Object.entries(room?.avatarOwners || {}).find(
+        ([, owner]) => owner === playerId,
+      )?.[0];
+      if (avatarId) {
+        await update(ref(db, `rooms/${roomCode}`), {
+          [`avatarOwners/${avatarId}`]: null,
+        });
+      }
     },
-    [roomCode],
+    [roomCode, room],
   );
 
   // ── Player: join a room ───────────────────────────────────────────────────
@@ -762,14 +950,35 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         const snap = await get(ref(db, `rooms/${upperCode}`));
         if (!snap.exists()) throw new Error(`Room "${upperCode}" not found.`);
 
-        const existingRoom = snap.val() as Room;
+const existingRoom = snap.val() as Room;
         const existingPlayer = existingRoom.players?.[myId];
         const isRejoin = !!existingPlayer;
+        const resolvedAvatar =
+          avatar || existingPlayer?.avatar || loadProfile().avatar || avatarImages[0]?.id;
+
+        // Atomic avatar-uniqueness: one player per character in a room, enforced
+        // server-side via a transaction. Rejoining your own avatar is a no-op.
+        if (resolvedAvatar !== existingPlayer?.avatar) {
+          const avatarRef = ref(db, `rooms/${upperCode}/avatarOwners/${resolvedAvatar}`);
+          const claim = await runTransaction(avatarRef, (cur) => {
+            if (cur && cur !== myId) return undefined; // taken → abort
+            return myId;
+          });
+          if (!claim.committed) {
+            throw new Error("That character is already taken in this room.");
+          }
+          // If we previously owned a different avatar, release the old slot.
+          if (existingPlayer?.avatar && existingPlayer.avatar !== resolvedAvatar) {
+            await update(ref(db, `rooms/${upperCode}`), {
+              [`avatarOwners/${existingPlayer.avatar}`]: null,
+            });
+          }
+        }
 
         const player: RoomPlayer = {
           id: myId,
           name: playerName,
-          avatar: avatar || existingPlayer?.avatar || loadProfile().avatar || avatarImages[0]?.id,
+          avatar: resolvedAvatar,
           score: existingPlayer?.score ?? 0,
           // Preserve the original joinedAt on rejoin so lobby ordering and
           // "who has been here longest" stay stable across refreshes.
@@ -783,6 +992,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
           fastestBuzz: existingPlayer?.fastestBuzz ?? null,
           streak: existingPlayer?.streak ?? 0,
           bestStreak: existingPlayer?.bestStreak ?? 0,
+          abilityId: getAbilityForAvatar(resolvedAvatar)?.id ?? existingPlayer?.abilityId,
+          abilityUnlocked: existingPlayer?.abilityUnlocked ?? false,
+          abilityUsed: existingPlayer?.abilityUsed ?? false,
         };
 
         const connectedRef = ref(db, `rooms/${upperCode}/players/${myId}/connected`);
@@ -851,17 +1063,43 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   // stamps the value the instant it processes the write, so every buzz is
   // ordered on one single authoritative clock regardless of whose device sent
   // it or how fast their connection was.
-  const buzz = useCallback(async () => {
-    if (!roomCode || !room) return;
+  const buzz = useCallback(async (): Promise<"ok" | "muted"> => {
+    if (!roomCode || !room) return "muted";
     // Only allowed when phase is 'buzzing'
-    if (room.phase !== "buzzing") return;
+    if (room.phase !== "buzzing") return "muted";
     // Ignore duplicate buzz from this client
-    if (room.buzzes?.[myId]) return;
+    if (room.buzzes?.[myId]) return "muted";
+
+    // Ability gates: silenced players and everyone outside a window lock are
+    // blocked server-side by refusing to write the buzz.
+    const gate = buzzGate({
+      meId: myId,
+      effects: room.abilityEffects,
+      appliedToQuestionId: room.activeQuestion?.questionId,
+      jail: room.jail,
+    });
+    if (gate === "muted") {
+      abilityNoticeBus.emit({
+        tone: "lock",
+        icon: "🔒",
+        title: "LOCKED OUT",
+      });
+      return "muted";
+    }
+    if (gate === "owner") {
+      abilityNoticeBus.emit({
+        tone: "ace",
+        icon: "⚡",
+        title: "YOUR WINDOW",
+        subtitle: "only you can buzz right now",
+      });
+    }
 
     await update(ref(db, `rooms/${roomCode}`), {
       [`buzzes/${myId}`]: serverTimestamp(),
       [`players/${myId}/buzzCount`]: increment(1),
     });
+    return "ok";
   }, [roomCode, room, myId]);
 
   // ── Player: send an emoji reaction ─────────────────────────────────────────
@@ -877,6 +1115,175 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         id: genId(8),
         ts: Date.now(),
       });
+    },
+    [roomCode, room, myId],
+  );
+
+  // ── Player: activate their once-per-game character ability ────────────────
+  // The claim itself is atomic (a transaction keyed on `abilityEffects/{myId}`)
+  // so a double-tap can never create two abilities. The effect is written
+  // server-side; immediate kinds are resolved by the host watcher; question-
+  // scoped kinds are stamped "applied" when a question opens.
+  const activateAbility = useCallback(
+    async ({
+      abilityId,
+      targetId,
+      option,
+    }: {
+      abilityId: string;
+      targetId?: string;
+      option?: string;
+    }): Promise<void> => {
+      if (!roomCode || !room) return;
+      const me = room.players?.[myId];
+      if (!me || me.abilityUsed || !me.abilityUnlocked || !me.abilityId) {
+        throw new Error("Ability is not ready.");
+      }
+      const def = getAbilityForAvatar(abilityId);
+      if (!def || def.id !== me.abilityId) return;
+      if (room.abilityEffects?.[myId]) {
+        throw new Error("You already have an ability active.");
+      }
+
+      const resolution = resolveAutoTarget(room.players, myId, def.params?.targetMode);
+      const effect: RoomAbilityEffect = sanitize({
+        id: genId(8),
+        playerId: myId,
+        abilityId: def.id,
+        kind: def.kind,
+        targetId: targetId ?? resolution,
+        option:
+          option ??
+          (def.params?.roll ? jokerRoll() : def.kind === "risky" ? "risk" : undefined),
+        immediate: isImmediateKind(def.kind),
+        status: "pending",
+        createdAt: Date.now(),
+      });
+
+      const effRef = ref(db, `rooms/${roomCode}/abilityEffects/${myId}`);
+      const claim = await runTransaction(effRef, (cur) => {
+        if (cur) return undefined; // already claimed → abort
+        return effect;
+      });
+      if (!claim.committed) {
+        throw new Error("Ability already active.");
+      }
+      await update(ref(db, `rooms/${roomCode}`), {
+        [`players/${myId}/abilityUsed`]: true,
+      });
+    },
+    [roomCode, room, myId],
+  );
+
+  // ── Player: choose NORMAL or RISK for the risky buzzer (lee) mid-buzzing ──
+  const setRiskChoice = useCallback(
+    async (choice: "normal" | "risk") => {
+      if (!roomCode || !room) return;
+      const fx = room.abilityEffects?.[myId];
+      if (!fx || fx.kind !== "risky" || fx.status !== "pending") return;
+      await update(ref(db, `rooms/${roomCode}`), {
+        [`abilityEffects/${myId}/option`]: choice,
+      });
+    },
+    [roomCode, room, myId],
+  );
+
+  // ── Host: resolve an instant ability (boost / steal / halve / tax) ────────
+  // Called by the host room's watcher when a pending immediate effect appears.
+  const applyImmediateAbility = useCallback(
+    async (effectPlayerId: string) => {
+      if (!roomCode || !room || room.hostId !== myId) return;
+      let fx = room.abilityEffects?.[effectPlayerId];
+      // Race guard: the watcher fired from a snapshot that may already be
+      // stale (the player's effect landing milliseconds behind). If the local
+      // effect is missing, pull the live one so an immediate ability can never
+      // silently fail to resolve — applying it is a one-shot, so re-reading is safe.
+      if (!fx) {
+        const live = await get(ref(db, `rooms/${roomCode}/abilityEffects/${effectPlayerId}`));
+        fx = live.val() as RoomAbilityEffect | null ?? undefined;
+      }
+      if (!fx || fx.status !== "pending" || !isImmediateKind(fx.kind)) return;
+      const players = room.players;
+      const def = getAbilityForAvatar(fx.abilityId);
+      const abilityName = def?.abilityName ?? "Ability";
+      const updates: Record<string, any> = {};
+      const roundScore = Math.round;
+
+      if (fx.kind === "boostNow") {
+        const pid = fx.playerId;
+        const amt = boostAmount(fx, players);
+        const name = players[pid]?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          players[pid]?.score ?? 0,
+          amt,
+          `${name} ${abilityName} (+$${amt})`,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
+      } else if (fx.kind === "stealNow" || fx.kind === "stealAuto") {
+        const transfer = stealTransfer(fx, players);
+        if (transfer) {
+          const fromP = players[transfer.from];
+          const toP = players[transfer.to];
+          const fromE = buildScoreChange(
+            transfer.from,
+            fromP?.score ?? 0,
+            -transfer.amount,
+            `${fromP?.name ?? "Player"} lost $${transfer.amount} to ${toP?.name ?? "Player"} [${abilityName}]`,
+          );
+          const toE = buildScoreChange(
+            transfer.to,
+            toP?.score ?? 0,
+            transfer.amount,
+            `${toP?.name ?? "Player"} ${abilityName} — took $${transfer.amount} from ${fromP?.name ?? "Player"}`,
+          );
+          updates[`players/${transfer.from}/score`] = fromE.newScore;
+          updates[`players/${transfer.to}/score`] = toE.newScore;
+          updates[`scoreHistory/${fromE.entry.id}`] = fromE.entry;
+          updates[`scoreHistory/${toE.entry.id}`] = toE.entry;
+        }
+      } else if (fx.kind === "halveNow") {
+        const pid = fx.targetId ?? leaderOf(players)?.id ?? fx.playerId;
+        const p = players[pid];
+        const amt = roundScore((p?.score ?? 0) / 2);
+        const name = p?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          p?.score ?? 0,
+          -amt,
+          `${name} halved by ${abilityName} (−$${amt})`,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
+      } else if (fx.kind === "taxNow") {
+        const { from, total } = taxPayout(fx, players);
+        const owner = players[fx.playerId];
+        for (const [pid, amt] of Object.entries(from)) {
+          const p = players[pid];
+          const e = buildScoreChange(
+            pid,
+            p?.score ?? 0,
+            -amt,
+            `${p?.name ?? "Player"} taxed $${amt} by ${owner?.name ?? "Player"} [${abilityName}]`,
+          );
+          updates[`players/${pid}/score`] = e.newScore;
+          updates[`scoreHistory/${e.entry.id}`] = e.entry;
+        }
+        if (total > 0) {
+          const e = buildScoreChange(
+            fx.playerId,
+            owner?.score ?? 0,
+            total,
+            `${owner?.name ?? "Player"} ${abilityName} collected $${total} in taxes`,
+          );
+          updates[`players/${fx.playerId}/score`] = e.newScore;
+          updates[`scoreHistory/${e.entry.id}`] = e.entry;
+        }
+      }
+
+      updates[`abilityEffects/${effectPlayerId}`] = null;
+      await update(ref(db, `rooms/${roomCode}`), updates);
     },
     [roomCode, room, myId],
   );
@@ -897,6 +1304,16 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         await remove(ref(db, `rooms/${roomCode}/players/${myId}`));
         await remove(ref(db, `rooms/${roomCode}/buzzes/${myId}`));
+        await remove(ref(db, `rooms/${roomCode}/abilityEffects/${myId}`));
+        // Release our avatar slot so a future player can take the character.
+        const avatarId = Object.entries(room?.avatarOwners || {}).find(
+          ([, owner]) => owner === myId,
+        )?.[0];
+        if (avatarId) {
+          await update(ref(db, `rooms/${roomCode}`), {
+            [`avatarOwners/${avatarId}`]: null,
+          });
+        }
       }
     }
 
@@ -933,6 +1350,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
         joinRoom,
         buzz,
         sendReaction,
+        activateAbility,
+        setRiskChoice,
+        applyImmediateAbility,
         leaveRoom,
       }}
     >

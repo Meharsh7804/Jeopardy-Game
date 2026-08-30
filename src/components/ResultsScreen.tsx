@@ -518,7 +518,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                   so avatars visually sit right on top of their column. */}
               <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end mb-0">
                 {podiumOrder.map((p, idx) => {
-                  const rank = podiumOrder.length === 3 ? [2, 1, 3][idx] : idx + 1;
+                  const rank = Math.min(3, players.findIndex((x) => x.id === p.id) + 1);
                   const style = podiumStyle[rank] ?? podiumStyle[1];
                   const isMe = p.id === myId;
                   // Unique celebration poses per rank via CSS rotate/translate
@@ -588,7 +588,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               {/* Podium columns — no overflow-hidden so avatars above are safe */}
               <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end">
                 {podiumOrder.map((p, idx) => {
-                  const rank = podiumOrder.length === 3 ? [2, 1, 3][idx] : idx + 1;
+                  const rank = Math.min(3, players.findIndex((x) => x.id === p.id) + 1);
                   const style = podiumStyle[rank] ?? podiumStyle[1];
                   return (
                     <motion.div
