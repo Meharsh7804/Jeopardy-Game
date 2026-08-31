@@ -30,7 +30,7 @@ import { AbilityCard } from "./ui/AbilityCard";
 import { ReactionGauge } from "./ui/ReactionGauge";
 import { ActivationModal, type ActivationPayload } from "../abilities/ActivationModal";
 import { getAbilityForAvatar } from "../abilities/config";
-import { rankBuzzes, clueText, activeClueFor, activeWindowOwner, isHidden } from "../abilities/engine";
+import { rankBuzzes, clueText, activeClueFor, activeCommunityClueFor, isHidden } from "../abilities/engine";
 import type { RoomAbilityEffect } from "../types/jeopardy";
 import { abilityNoticeBus } from "../abilities/internal";
 
@@ -175,6 +175,14 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const [allUnlocked, setAllUnlocked] = useState(false);
 
   const seenAnyPhaseRef = useRef(false);
+  // The page is a fixed-height scroll container; keep a handle so we can reset
+  // its scroll position whenever the phase changes. Otherwise a player scrolled
+  // down on the board would be left staring mid-screen when the next question
+  // (or answer) opens.
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    mainScrollRef.current?.scrollTo({ top: 0 });
+  }, [room?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (room?.phase === "starting") {
       // Fresh game — baseline from the stored profile.
@@ -405,9 +413,25 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
       : false;
   // Dark Jokes = Jail (samay): jailed players cannot buzz this question.
   const jailedNow = !!room?.jail?.includes(myId);
-  const windowOwnerNow = activeQuestionId
-    ? activeWindowOwner(room?.abilityEffects, activeQuestionId)
+  // Owner-only buzzing window (`john`/`anime`/`raftaar`) — only live while the
+  // windowMs has NOT elapsed since the question opened. Once it lapses, the
+  // owner badge disappears and everyone can buzz again.
+  const activeWindowFx = activeQuestionId
+    ? Object.values(room?.abilityEffects || {}).find(
+        (e) =>
+          e.kind === "windowLock" &&
+          e.status === "applied" &&
+          e.appliedToQuestionId === activeQuestionId,
+      )
     : undefined;
+  const windowOwnerMs =
+    activeWindowFx && getAbilityForAvatar(activeWindowFx.abilityId)?.params?.windowMs;
+  const windowOpen =
+    !!activeWindowFx &&
+    !!windowOwnerMs &&
+    openedAt > 0 &&
+    Date.now() - openedAt < windowOwnerMs;
+  const windowOwnerNow = windowOpen ? activeWindowFx?.playerId : undefined;
   const hiddenNow = isHidden(myId, room?.abilityEffects);
 
   // Hidden delight: right-clicking the buzzer is a quiet wink, not an action.
@@ -516,7 +540,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   );
 
   return (
-    <div className="min-h-screen flex flex-col select-none bg-primary-bg relative overflow-hidden">
+    <div className="h-screen max-h-screen flex flex-col select-none bg-primary-bg relative overflow-hidden">
       {/* Achievement unlocked popups */}
       <AchievementToast />
       {/* Background glow effects */}
@@ -620,7 +644,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-start p-4 sm:p-8 gap-6 max-w-4xl mx-auto w-full relative z-10">
+      <main ref={mainScrollRef as any} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col items-center justify-start p-4 sm:p-8 gap-6 w-full relative z-10 mx-auto" style={{ maxWidth: 1600 }}>
         <AnimatePresence mode="wait">
           {/* LOBBY — waiting */}
           {room.phase === "lobby" && (
@@ -665,7 +689,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                  </p>
                </div>
                {myAbility && myPlayer && (
-                 <div className="w-full max-w-md mx-auto">
+                 <div className="w-full max-w-lg mx-auto">
                    <AbilityCard
                      player={myPlayer}
                      fx={myFx}
@@ -673,7 +697,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                    />
                  </div>
                )}
-              <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8">
+              <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 mt-8">
                 <AnimatePresence>
                   {players.map((p, index) => (
                     <motion.div
@@ -712,8 +736,10 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
-              className="w-full space-y-8"
+              className="w-full grid gap-6 lg:grid-cols-[1fr_380px] items-start"
             >
+              {/* Left column: host banner + categories board */}
+              <div className="min-w-0 flex flex-col gap-6">
               <div className="glass-panel p-4 rounded-2xl text-center border-white/10 shadow-lg">
                 <p className="text-sm font-medium text-white flex items-center justify-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-warning-accent animate-pulse" />
@@ -722,7 +748,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
               </div>
 
               {myAbility && myPlayer && (
-                <div className="w-full max-w-md mx-auto">
+                <div className="w-full lg:hidden max-w-md mx-auto">
                   <AbilityCard
                     player={myPlayer}
                     fx={myFx}
@@ -787,12 +813,25 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 </div>
                 </div>
               )}
+              </div>
+
+              {/* Right column: ability card (desktop) + leaderboard */}
+              <div className="min-w-0 flex flex-col gap-6">
+              {myAbility && myPlayer && (
+                <div className="w-full hidden lg:block">
+                  <AbilityCard
+                    player={myPlayer}
+                    fx={myFx}
+                    onActivate={() => setShowActivation(true)}
+                  />
+                </div>
+              )}
 
               <div className="glass-panel-heavy p-6 rounded-3xl space-y-4 border border-white/10 shadow-xl">
                 <p className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
                   <Crown className="w-4 h-4 text-warning-accent" /> {t('standings')}
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   {visiblePlayers.map((p, i) => (
                     <div
                       key={p.id}
@@ -802,14 +841,14 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                           : "bg-white/5 border-white/5"
                       }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         {i === 0 && p.score > 0 ? (
-                          <Crown className="w-4 h-4 text-warning-accent fill-warning-accent" />
+                          <Crown className="w-4 h-4 text-warning-accent fill-warning-accent shrink-0" />
                         ) : (
-                          <span className="text-[10px] font-bold text-text-muted w-4 text-center">#{i + 1}</span>
+                          <span className="text-[10px] font-bold text-text-muted w-4 text-center shrink-0">#{i + 1}</span>
                         )}
                         <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={28} className="shrink-0 rounded-full" />
-                        <span className={`font-bold text-sm truncate ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
+                        <span className={`font-bold text-sm break-words min-w-0 ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
                           {p.name} {p.id === myId && `(${t('you')})`}
                           {isHidden(p.id, room.abilityEffects) && (
                             <span className="ml-1.5 text-[9px] font-black text-text-muted uppercase tracking-widest">👻</span>
@@ -828,6 +867,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     </div>
                   ))}
                 </div>
+              </div>
               </div>
             </motion.div>
           )}
@@ -1032,26 +1072,49 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                      </div>
                    )}
 
-                   {/* Owner-only clue card */}
-                   {myClue && (
-                     (() => {
-                       const activeQ = quiz?.categories
-                         .flatMap((c) => c.questions)
-                         .find((q) => q.id === room?.activeQuestion?.questionId);
-                       if (!activeQ) return null;
-                       const clueType = getAbilityForAvatar(myClue.abilityId)?.params?.clueType;
-                       return (
-                         <div className="relative z-10 p-4 rounded-2xl bg-primary-accent/15 border border-primary-accent/40 overflow-hidden">
-                           <p className="text-[10px] font-black uppercase tracking-widest text-primary-accent mb-1.5 flex items-center gap-1.5">
-                             <Eye className="w-3 h-3" /> Owner-only clue
-                           </p>
-                           <p className="text-xl font-display font-bold text-white drop-shadow leading-snug">
-                             {clueText(activeQ.answer, clueType)}
-                           </p>
-                         </div>
-                       );
-                     })()
-                   )}
+                    {/* Owner-only clue card */}
+                    {myClue && (
+                      (() => {
+                        const activeQ = quiz?.categories
+                          .flatMap((c) => c.questions)
+                          .find((q) => q.id === room?.activeQuestion?.questionId);
+                        if (!activeQ) return null;
+                        const clueType = getAbilityForAvatar(myClue.abilityId)?.params?.clueType;
+                        return (
+                          <div className="relative z-10 p-4 rounded-2xl bg-primary-accent/15 border border-primary-accent/40 overflow-hidden">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-primary-accent mb-1.5 flex items-center gap-1.5">
+                              <Eye className="w-3 h-3" /> Owner-only clue
+                            </p>
+                            <p className="text-xl font-display font-bold text-white drop-shadow leading-snug">
+                              {clueText(activeQ.answer, clueType)}
+                            </p>
+                          </div>
+                        );
+                      })()
+                    )}
+
+                    {/* Community clue (kr$na) — revealed to EVERYONE */}
+                    {(() => {
+                      const communityFx = room?.activeQuestion
+                        ? activeCommunityClueFor(room.abilityEffects, room.activeQuestion.questionId)
+                        : undefined;
+                      if (!communityFx) return null;
+                      const activeQ = quiz?.categories
+                        .flatMap((c) => c.questions)
+                        .find((q) => q.id === room?.activeQuestion?.questionId);
+                      if (!activeQ) return null;
+                      const clueType = getAbilityForAvatar(communityFx.abilityId)?.params?.clueType;
+                      return (
+                        <div className="relative z-10 p-4 rounded-2xl bg-warning-accent/15 border border-warning-accent/40 overflow-hidden">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-warning-accent mb-1.5 flex items-center gap-1.5">
+                            <Eye className="w-3 h-3" /> Sales Round — everyone sees it
+                          </p>
+                          <p className="text-xl font-display font-bold text-white drop-shadow leading-snug">
+                            {clueText(activeQ.answer, clueType)}
+                          </p>
+                        </div>
+                      );
+                    })()}
 
                    {/* Buzz queue — rendered only from the settled (authoritative) order.
                       While settling we show a pulsing placeholder so nothing flickers. */}
@@ -1080,7 +1143,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                         className="space-y-3"
                       >
                         <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{t('buzzQueue')}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3">
                           {committedBuzzes.map(([pId, ts], idx) => {
                             const p = room.players[pId];
                             if (!p) return null;
@@ -1099,12 +1162,12 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                                     : "bg-white/5 border-white/5"
                                 } ${isMe && !isFirst ? "ring-1 ring-primary-accent/50" : ""}`}
                               >
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${isFirst ? "bg-warning-accent text-black" : "bg-white/10 text-text-muted"}`}>
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${isFirst ? "bg-warning-accent text-black" : "bg-white/10 text-text-muted"}`}>
                                   {idx + 1}
                                 </div>
                                 <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={28} className="shrink-0 rounded-full" />
                                 <div className="flex-1 min-w-0">
-                                  <p className={`font-bold text-sm truncate ${isFirst ? "text-warning-accent" : "text-white"}`}>
+                                  <p className={`font-bold text-sm break-words ${isFirst ? "text-warning-accent" : "text-white"}`}>
                                     {p.name} {isMe && <span className="text-[10px] ml-1 text-primary-accent">({t('you')})</span>}
                                   </p>
                                   {(p.streak ?? 0) >= 2 && (

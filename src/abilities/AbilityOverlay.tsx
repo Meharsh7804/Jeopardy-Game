@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { getAbilityForAvatar } from "./config";
 import { abilityOverlayBus, type AbilityOverlayEvent } from "./internal";
-import { playAbilityAudio } from "./audio";
 import { getAvatarByIdOrSeed } from "../utils/avatarImages";
 
 const ACCENT_GLOW: Record<string, string> = {
@@ -46,7 +45,6 @@ export const AbilityOverlay: React.FC = () => {
     const unsub = abilityOverlayBus.subscribe((e) => {
       const def = getAbilityForAvatar(e.abilityId);
       if (!def) return;
-      playAbilityAudio(e.abilityId);
       const avatar = getAvatarByIdOrSeed(e.abilityId);
       setItems((prev) => [...prev, { ...e, avatarSrc: avatar?.src, name: def.name }]);
       window.setTimeout(() => {

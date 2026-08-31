@@ -27,7 +27,7 @@ import {
   increment,
   runTransaction,
 } from "firebase/database";
-import { avatarImages } from "../utils/avatarImages";
+import { avatarImages, fbAvatarKey } from "../utils/avatarImages";
 import { loadProfile } from "../utils/profile";
 import type {
   Room,
@@ -50,9 +50,11 @@ import {
   boostAmount,
   stealTransfer,
   taxPayout,
+  confiscatePayout,
   resolveAutoTarget,
   rankBuzzes,
   leaderOf,
+  highestOf,
   activeModiShareFor,
 } from "../abilities/engine";
 import { abilityNoticeBus } from "../abilities/internal";
@@ -684,11 +686,15 @@ const code = genId(6);
 
         if (res.forgiven) {
           // Bounce-back (second chance): no penalty, buzz is kept, question
-          // stays live. Mark the forgiveness so a rebound pays half.
-          updates[`abilityEffects/${buzzPlayerId}/secondChanceUsed`] = true;
+          // stays live. A shield, by contrast, absorbs the loss but the turn
+          // passes on (buzz removed).
+          if (effects[buzzPlayerId]?.kind === "secondChance") {
+            updates[`abilityEffects/${buzzPlayerId}/secondChanceUsed`] = true;
+          }
           // A spent frontOfLine guarantee still ends here — they got their
           // guaranteed crack at the clue even though it bounced back.
           for (const pid of spentFrontOfLine) updates[`abilityEffects/${pid}`] = null;
+          if (!res.keepBuzz) updates[`buzzes/${buzzPlayerId}`] = null;
         } else {
           const playerName = players[buzzPlayerId]?.name ?? "Player";
           const { entry, newScore } = buildScoreChange(
@@ -959,7 +965,7 @@ const existingRoom = snap.val() as Room;
         // Atomic avatar-uniqueness: one player per character in a room, enforced
         // server-side via a transaction. Rejoining your own avatar is a no-op.
         if (resolvedAvatar !== existingPlayer?.avatar) {
-          const avatarRef = ref(db, `rooms/${upperCode}/avatarOwners/${resolvedAvatar}`);
+          const avatarRef = ref(db, `rooms/${upperCode}/avatarOwners/${fbAvatarKey(resolvedAvatar)}`);
           const claim = await runTransaction(avatarRef, (cur) => {
             if (cur && cur !== myId) return undefined; // taken → abort
             return myId;
@@ -970,7 +976,7 @@ const existingRoom = snap.val() as Room;
           // If we previously owned a different avatar, release the old slot.
           if (existingPlayer?.avatar && existingPlayer.avatar !== resolvedAvatar) {
             await update(ref(db, `rooms/${upperCode}`), {
-              [`avatarOwners/${existingPlayer.avatar}`]: null,
+              [`avatarOwners/${fbAvatarKey(existingPlayer.avatar)}`]: null,
             });
           }
         }
@@ -1077,6 +1083,7 @@ const existingRoom = snap.val() as Room;
       effects: room.abilityEffects,
       appliedToQuestionId: room.activeQuestion?.questionId,
       jail: room.jail,
+      openedAt: room.activeQuestion?.openedAt,
     });
     if (gate === "muted") {
       abilityNoticeBus.emit({
@@ -1280,6 +1287,127 @@ const existingRoom = snap.val() as Room;
           updates[`players/${fx.playerId}/score`] = e.newScore;
           updates[`scoreHistory/${e.entry.id}`] = e.entry;
         }
+      } else if (fx.kind === "doubleNow") {
+        const pid = fx.playerId;
+        const amt = players[pid]?.score ?? 0;
+        const name = players[pid]?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          amt,
+          amt,
+          `${name} ${abilityName} — doubled to $${amt * 2}`,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
+      } else if (fx.kind === "multiplyNow") {
+        const pid = fx.playerId;
+        const mult = getAbilityForAvatar(fx.abilityId)?.params?.mult ?? 2;
+        const current = players[pid]?.score ?? 0;
+        const amt = roundScore(current * mult) - current;
+        const name = players[pid]?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          current,
+          amt,
+          `${name} ${abilityName} — multiplied to $${roundScore(current * mult)} (×${mult})`,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
+      } else if (fx.kind === "copyLeader") {
+        const pid = fx.playerId;
+        const leader = leaderOf(players);
+        const targetScore = leader ? leader.score : players[pid]?.score ?? 0;
+        const current = players[pid]?.score ?? 0;
+        const delta = targetScore - current;
+        const name = players[pid]?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          current,
+          delta,
+          `${name} ${abilityName} — matched the leader ($${targetScore})`,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
+      } else if (fx.kind === "grabHighest") {
+        const def0 = getAbilityForAvatar(fx.abilityId);
+        const pct = def0?.params?.pct ?? 0.9;
+        const target = highestOf(players, fx.playerId);
+        if (target) {
+          const amt = roundScore((target.score ?? 0) * pct);
+          const ownerName = players[fx.playerId]?.name ?? "Player";
+          const fromE = buildScoreChange(
+            target.id,
+            amt,
+            -amt,
+            `${target.name ?? "Player"} lost ${Math.round(pct * 100)}% ($${amt}) to ${ownerName} [${abilityName}]`,
+          );
+          const toE = buildScoreChange(
+            fx.playerId,
+            players[fx.playerId]?.score ?? 0,
+            amt,
+            `${ownerName} took $${amt} from ${target.name ?? "Player"} [${abilityName}]`,
+          );
+          updates[`players/${target.id}/score`] = fromE.newScore;
+          updates[`players/${fx.playerId}/score`] = toE.newScore;
+          updates[`scoreHistory/${fromE.entry.id}`] = fromE.entry;
+          updates[`scoreHistory/${toE.entry.id}`] = toE.entry;
+        }
+      } else if (fx.kind === "swapNow") {
+        const targetId = fx.targetId;
+        const a = players[fx.playerId];
+        const b = targetId ? players[targetId] : undefined;
+        if (a && b && targetId && targetId !== fx.playerId) {
+          const aName = a?.name ?? "Player";
+          const bName = b?.name ?? "Player";
+          const aScore = a?.score ?? 0;
+          const bScore = b?.score ?? 0;
+          updates[`players/${fx.playerId}/score`] = bScore;
+          updates[`players/${targetId}/score`] = aScore;
+          const ea = buildScoreChange(fx.playerId, aScore, bScore - aScore, `${aName} swapped scores with ${bName} [${abilityName}]`);
+          const eb = buildScoreChange(targetId, bScore, aScore - bScore, `${bName} swapped scores with ${aName} [${abilityName}]`);
+          updates[`scoreHistory/${ea.entry.id}`] = ea.entry;
+          updates[`scoreHistory/${eb.entry.id}`] = eb.entry;
+        }
+      } else if (fx.kind === "confiscate") {
+        const from = confiscatePayout(fx, players);
+        for (const [pid, amt] of Object.entries(from)) {
+          const p = players[pid];
+          const e = buildScoreChange(
+            pid,
+            p?.score ?? 0,
+            -amt,
+            `${p?.name ?? "Player"} confiscated $${amt} by ${abilityName}`,
+          );
+          updates[`players/${pid}/score`] = e.newScore;
+          updates[`scoreHistory/${e.entry.id}`] = e.entry;
+        }
+      } else if (fx.kind === "subCount") {
+        const pid = fx.playerId;
+        const completed = room?.completedQuestions
+          ? Object.keys(room.completedQuestions).filter((k) => room.completedQuestions[k]).length
+          : 0;
+        const amt = completed * 50;
+        const name = players[pid]?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          players[pid]?.score ?? 0,
+          amt,
+          `${name} ${abilityName} — ${completed} × $50 (+$${amt})`,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
+      } else if (fx.kind === "prime") {
+        const pid = fx.playerId;
+        const amt = 250;
+        const name = players[pid]?.name ?? "Player";
+        const { entry, newScore } = buildScoreChange(
+          pid,
+          players[pid]?.score ?? 0,
+          amt,
+          `${name} ${abilityName} (+$${amt})`,
+        );
+        updates[`players/${pid}/score`] = newScore;
+        updates[`scoreHistory/${entry.id}`] = entry;
       }
 
       updates[`abilityEffects/${effectPlayerId}`] = null;

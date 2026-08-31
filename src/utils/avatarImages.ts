@@ -19,6 +19,15 @@ export interface AvatarOption {
   position: string;
 }
 
+/**
+ * Map an avatar id to a Firebase Realtime Database-safe path key. Firebase
+ * rejects keys containing ".", "#", "$", "[" or "]" — our roster has
+ * "kr$na", so the "$" (and any other reserved char) must be percent-encoded
+ * before the id is used as a `avatarOwners/…` key. All other ids are plain
+ * lowercase words and pass through unchanged.
+ */
+export const fbAvatarKey = (avatarId: string): string => encodeURIComponent(avatarId);
+
 export const avatarImages: AvatarOption[] = sorted.map(([path, src]) => {
   const file = path.split("/").pop()?.replace(/\.(jpg|jpeg|png|webp|svg|gif)$/i, "") ?? "";
   return { id: file, src, position: POSITION_OVERRIDES[file] ?? "center" };

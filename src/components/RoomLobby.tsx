@@ -27,7 +27,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { PlayerAvatar } from "../utils/playerAvatar";
-import { avatarImages } from "../utils/avatarImages";
+import { avatarImages, fbAvatarKey } from "../utils/avatarImages";
 import { CharacterCard } from "./ui/CharacterCard";
 import { Logo } from "./ui/Logo";
 import { SettingsModal } from "./SettingsModal";
@@ -556,7 +556,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                 placeholder={t("yourNamePh")}
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
-                className={`${inputBase} focus:border-secondary-accent focus:ring-1 focus:ring-secondary-accent text-base`}
+                className={`${inputBase} ring-1 ring-secondary-accent/70 focus:ring-2 focus:ring-secondary-accent text-base`}
               />
             </div>
 
@@ -573,7 +573,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
               <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-5 lg:grid-cols-7 gap-2.5 p-3 rounded-2xl bg-black/40 border border-white/10 flex-1 min-h-0 auto-rows-fr content-start">
                 {avatarImages.map((av) => {
                   const isSelected = selectedAvatar === av.id;
-                  const taken = !!takenAvatars[av.id] && takenAvatars[av.id] !== myId;
+                  const taken = !!takenAvatars[fbAvatarKey(av.id)] && takenAvatars[fbAvatarKey(av.id)] !== myId;
                   return (
                     <button
                       key={av.id}
@@ -618,7 +618,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
           <div className="flex flex-col gap-4">
             <CharacterCard
               avatarId={selectedAvatar || undefined}
-              taken={!!selectedAvatar && !!takenAvatars[selectedAvatar] && takenAvatars[selectedAvatar] !== myId}
+              taken={!!selectedAvatar && !!takenAvatars[fbAvatarKey(selectedAvatar)] && takenAvatars[fbAvatarKey(selectedAvatar)] !== myId}
             />
 
           {/* Card 2: Room Code + Join */}
@@ -651,7 +651,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
               <button
                 onClick={handleJoin}
                 disabled={loading}
-                className="w-full py-4 rounded-2xl bg-gradient-to-r from-secondary-accent to-pink-600 hover:from-pink-500 hover:to-secondary-accent font-display font-black text-base sm:text-lg text-white shadow-[0_0_30px_rgba(236,72,153,0.4)] hover:shadow-[0_0_40px_rgba(236,72,153,0.6)] transition-all flex items-center justify-center gap-3 active:scale-[0.99] disabled:opacity-50"
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-primary-accent to-indigo-600 hover:from-primary-hover hover:to-indigo-500 font-display font-black text-base sm:text-lg text-white shadow-[0_0_30px_rgba(99,102,241,0.4)] hover:shadow-[0_0_40px_rgba(99,102,241,0.6)] transition-all flex items-center justify-center gap-3 active:scale-[0.99] disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="w-6 h-6 animate-spin" />

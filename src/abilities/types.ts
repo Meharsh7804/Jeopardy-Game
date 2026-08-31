@@ -4,26 +4,53 @@
 // params describes every ability, and the engine (`engine.ts`) interprets them.
 
 export type AbilityKind =
-  | "clue" // reveal part of the live question's answer — owner sees it client-side
-  | "multiplier" // owner's next correct answer is worth value × mult
-  | "redirect" // owner's next correct points are awarded to targetId (stats kept)
-  | "modiShare" // modi: whoever answers correctly this question gets points AND modi banks the same
-  | "secondChance" // dead/srk: first wrong is forgiven, buzz kept, rebound = half
-  | "halfWrong" // owner's next wrong only costs half
-  | "frontOfLine" // owner's next buzz is ranked #1 regardless of reaction time
-  | "windowLock" // for windowMs only the owner may buzz after a question opens
-  | "silence" // targetId can't buzz for windowMs
+  // ── Owner-only hints (each reveals a distinct slice of the answer) ─────────
+  | "clue" // generic: reveal part of the live question's answer via params.clueType
+  | "clueSkeleton" // first/last letter of every word
+  | "clue2" // two random letters + total length
+  | "clue3" // first three letters
+  | "clueFirstLast" // first + last letter
+  | "clueLength" // length + vowel count
+  | "clueVague" // length only
+  | "clueCommunity" // kr$na: letter skeleton revealed to EVERYONE on the question
+  // ── Scoring carried into the next correct answer ───────────────────────────
+  | "multiplier" // owner's next correct is worth × mult
+  | "chaseMult" // virat: ×1.5 on next correct only while trailing the leader
+  | "hike" // pw: next question, EVERY correct answer is worth ×1.5
+  | "echo" // raftaar: owner's next correct earns +40% of the value on top
+  | "refuel" // luffy: owner's next correct earns +$150 flat on top
+  | "draft" // john: target earnings 0 on the next question
+  | "jinx" // hamza: target's next correct is worth half
+  | "redirect" // (reserved) owner's next correct points go to targetId (stats kept)
+  | "modiShare" // modi: whoever answers correctly gets points AND modi banks the same
+  // ── Wrong-answer defenses / punishments ────────────────────────────────────
+  | "secondChance" // dead: first wrong forgiven, buzz kept, rebound = half
+  | "shield" // srk: next wrong ignored (no penalty) but the buzz turn is lost
+  | "halfWrong" // honey: owner's next wrong only costs half
+  | "trapWrong" // tate: if targetId's next answer is wrong → −2× value on them
+  | "jailWrong" // samay: wrong answerers on this question are jailed next question
+  // ── Buzz control ───────────────────────────────────────────────────────────
+  | "frontOfLine" // billy: owner's next buzz is ranked #1
+  | "windowLock" // for windowMs only the owner may buzz
+  | "silence" // thomas: targetId can't buzz for windowMs
   | "risky" // lee: choose NORMAL (×1) or RISK (×2 / −2× on wrong)
   | "rollNow" // joker: random × roll for next correct, rolled at activation
-  | "trapWrong" // if targetId's next answer is wrong → −2× value on them
-  | "hide" // perry: owner is hidden from other clients' leaderboards while applied
-  | "answerWindow" // owner-only countdown (presentational)
-  | "boostNow" // host applies instantly: owner gains points (option) 
-  | "stealNow" // host applies instantly: transfer pct% of targetId's score to owner
-  | "stealAuto" // host applies instantly: auto-resolve target (leader / above / lowest)
-  | "halveNow" // host applies instantly: halve targetId's score
-  | "taxNow" // host applies instantly: everyone else −15%, owner gains the total
-  | "jailWrong"; // samay: wrong answerers on this question are jailed (can't buzz next question)
+  // ── Instant score plays (host resolves on activation) ──────────────────────
+  | "stealNow" // kratos: transfer pct% of targetId's score to owner
+  | "halveNow" // thanos: halve targetId's score
+  | "taxNow" // selmon: everyone else −15%, owner gains the total
+  | "doubleNow" // hritik: double the owner's own score
+  | "multiplyNow" // msd: multiply the owner's own score by params.mult (×7)
+  | "copyLeader" // walter: owner's score becomes the leader's score
+  | "grabHighest" // homelander: steal 90% from the highest scorer
+  | "swapNow" // anime: swap the owner's score with a chosen player's
+  | "confiscate" // prabhas: everyone else loses 10% (owner gains nothing)
+  | "subCount" // techno: +50 × questions already completed
+  | "prime" // ryder: +$250 flat
+  | "boostNow" // (reserved) flat/percent self boost
+  | "stealAuto" // (reserved) auto-target steal
+  | "hide" // perry: owner hidden from other clients' leaderboards while applied
+  | "answerWindow"; // owner-only countdown (presentational)
 
 /** Absolute- or percentage-based hint ladder for clue kinds. */
 export type ClueType =

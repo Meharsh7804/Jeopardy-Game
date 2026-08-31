@@ -11,18 +11,47 @@ export const isImmediateKind = (kind?: AbilityKind): boolean =>
   kind === "stealNow" ||
   kind === "stealAuto" ||
   kind === "halveNow" ||
-  kind === "taxNow";
+  kind === "taxNow" ||
+  kind === "doubleNow" ||
+  kind === "multiplyNow" ||
+  kind === "copyLeader" ||
+  kind === "grabHighest" ||
+  kind === "swapNow" ||
+  kind === "confiscate" ||
+  kind === "subCount" ||
+  kind === "prime";
 
 /** Carry-forward kinds survive question boundaries until the engine consumes them. */
 export const isQuestionScopedKind = (kind?: AbilityKind): boolean =>
   kind === "clue" ||
+  kind === "clueSkeleton" ||
+  kind === "clue2" ||
+  kind === "clue3" ||
+  kind === "clueFirstLast" ||
+  kind === "clueLength" ||
+  kind === "clueVague" ||
+  kind === "clueCommunity" ||
   kind === "windowLock" ||
   kind === "silence" ||
   kind === "hide" ||
   kind === "answerWindow" ||
   kind === "trapWrong" ||
   kind === "jailWrong" ||
-  kind === "modiShare";
+  kind === "modiShare" ||
+  kind === "multiplier" ||
+  kind === "chaseMult" ||
+  kind === "hike" ||
+  kind === "echo" ||
+  kind === "refuel" ||
+  kind === "draft" ||
+  kind === "jinx" ||
+  kind === "shield" ||
+  kind === "risky" ||
+  kind === "rollNow" ||
+  kind === "redirect" ||
+  kind === "secondChance" ||
+  kind === "halfWrong" ||
+  kind === "frontOfLine";
 
 const round = (n: number) => Math.round(n);
 
@@ -154,7 +183,13 @@ export const computeCorrectAward = (args: {
   const { ownerId, value, firstBuzzBonus, effects, players } = args;
   const fx = effects[ownerId];
   const leader = leaderOf(players);
-  const chasing = !leader || leader.id === ownerId || (players[ownerId]?.score ?? 0) < (leader.score || 0);
+  // virat's "chase" means actively trailing the leader — once you ARE the leader
+  // (or tied for first) you're no longer chasing, so the boost shouldn't trigger.
+  const owned = players[ownerId];
+  const chasing = !!leader &&
+    !!owned &&
+    leader.id !== ownerId &&
+    (owned.score ?? 0) < (leader.score || 0);
 
   let points = value + firstBuzzBonus;
   let payeeId = ownerId;
@@ -162,13 +197,26 @@ export const computeCorrectAward = (args: {
   const notes: string[] = [];
   let reboundHalf = false;
 
+  // PW's hike: every correct answer on this question is worth 1.5× for the
+  // buzzer (the boost belongs to the crowd, not the owner).
+  const hikeFx = Object.values(effects || {}).find(
+    (e) => e.kind === "hike" && e.status === "applied",
+  );
+  // John's draft / Hamza's jinx are aimed AT the buzzer, so they resolve here.
+  const draftFx = Object.values(effects || {}).find(
+    (e) => e.kind === "draft" && e.targetId === ownerId && e.status === "applied",
+  );
+  const jinxFx = Object.values(effects || {}).find(
+    (e) => e.kind === "jinx" && e.targetId === ownerId && e.status === "applied",
+  );
+
   if (fx) {
-    if (fx.kind === "multiplier") {
+    if (fx.kind === "multiplier" || fx.kind === "chaseMult") {
       const mult = paramsOf(fx)?.mult ?? 1;
-      const chaseGate = fx.abilityId === "virat";
+      const chaseGate = fx.kind === "chaseMult" || fx.abilityId === "virat";
       if (!chaseGate || chasing) {
         points = round(points * mult);
-        notes.push(`${mult}×`);
+        notes.push(`${mult}×` + (chaseGate && chasing ? " chase" : ""));
         consume.push(ownerId);
       } else {
         notes.push("Chase unmet");
@@ -181,6 +229,14 @@ export const computeCorrectAward = (args: {
       const pct = parseInt(fx.option || "150", 10);
       points = round((points * pct) / 100);
       notes.push(pct === 250 ? "×2.5" : pct === 200 ? "×2" : "×1.5");
+      consume.push(ownerId);
+    } else if (fx.kind === "echo") {
+      points = round(points * 1.4);
+      notes.push("+40% echo");
+      consume.push(ownerId);
+    } else if (fx.kind === "refuel") {
+      points += 150;
+      notes.push("+$150 refuel");
       consume.push(ownerId);
     }
     if (fx.kind === "secondChance" && fx.secondChanceUsed) {
@@ -196,6 +252,20 @@ export const computeCorrectAward = (args: {
       }
       consume.push(ownerId);
     }
+  }
+
+  if (hikeFx) {
+    points = round(points * 1.5);
+    notes.push("×1.5 hike");
+  }
+  if (draftFx) {
+    points = 0;
+    consume.push(draftFx.playerId);
+    notes.push("drafted (0)");
+  } else if (jinxFx) {
+    points = round(points / 2);
+    consume.push(jinxFx.playerId);
+    notes.push("jinxed (half)");
   }
 
   return {
@@ -233,12 +303,9 @@ export const computeWrongPenalty = (args: {
 
   if (fx) {
     if (fx.kind === "risky" && fx.option === "risk") {
+      penalty = value * 2;
       note = "RISK wrong ×2";
       consume.push(playerId);
-    } else if (trapOwner) {
-      penalty = value * 2;
-      note = "Trapped ×2";
-      consume.push(trapOwner);
     } else if (fx.kind === "secondChance" && !fx.secondChanceUsed) {
       penalty = 0;
       forgiven = true;
@@ -252,7 +319,24 @@ export const computeWrongPenalty = (args: {
       penalty = round(value / 2);
       note = "Half-loss";
       consume.push(playerId);
+    } else if (fx.kind === "shield") {
+      penalty = 0;
+      forgiven = true;
+      keepBuzz = false;
+      wrongCount = false;
+      note = "Shield absorbed the wrong answer";
+      consume.push(playerId);
     }
+  }
+
+  // Tate's trap applies to the victim no matter what the victim has active —
+  // it can't be nested under `if (fx)` or it would only fire when the target
+  // happened to hold their own effect. RESERVES priority above the victim's
+  // own shield/bounce-back (a trap doesn't get forgiven twice).
+  if (trapOwner && !forgiven) {
+    penalty = value * 2;
+    note = "Trapped ×2";
+    consume.push(trapOwner);
   }
 
   return {
@@ -266,14 +350,22 @@ export const computeWrongPenalty = (args: {
   };
 };
 
-/** Gates one player's buzz write by the live lock/silence/jail effects. */
+/**
+ * Gates one player's buzz write by the live lock/silence/jail effects.
+ *
+ * windowLock (`john`, `anime`, `raftaar`) and silence (`thomas`) are
+ * time-bound: they only hold while the owner-only window is open. Once
+ * `windowMs` has elapsed from when the question opened (`openedAt`), the lock
+ * lifts and everyone is free to buzz again.
+ */
 export const buzzGate = (args: {
   meId: string;
   effects?: Record<string, RoomAbilityEffect>;
   appliedToQuestionId?: string;
   jail?: string[];
+  openedAt?: number;
 }): "muted" | "allowed" | "owner" => {
-  const { meId, effects, appliedToQuestionId, jail } = args;
+  const { meId, effects, appliedToQuestionId, jail, openedAt } = args;
   if (jail && jail.includes(meId)) return "muted";
   const active = Object.values(effects || {}).filter(
     (e) =>
@@ -282,6 +374,9 @@ export const buzzGate = (args: {
       e.appliedToQuestionId === appliedToQuestionId,
   );
   for (const fx of active) {
+    const windowMs = getAbilityForAvatar(fx.abilityId)?.params?.windowMs;
+    // The owner-only window has lapsed — release the lock for everyone.
+    if (openedAt && windowMs && Date.now() - openedAt >= windowMs) continue;
     if (fx.kind === "silence" && fx.targetId === meId) return "muted";
     if (fx.kind === "windowLock") {
       if (fx.playerId === meId) return "owner";
@@ -291,12 +386,15 @@ export const buzzGate = (args: {
   return "allowed";
 };
 
-/** Instant point award for boostNow effects (host applies). */
+/** Instant point award for boostNow effects (host applies). Includes the
+ *  special-cased flat amounts (ryder's prime = +250) so the helper never
+ *  disagrees with what the host applies at runtime. */
 export const boostAmount = (
   fx: RoomAbilityEffect,
   players: Record<string, RoomPlayer>,
 ): number => {
   const def = getAbilityForAvatar(fx.abilityId);
+  if (def?.kind === "prime") return 250;
   const player = players[fx.playerId];
   const base = player?.score ?? 0;
   if (def?.params?.boost === "flat") return def.params.boostValue ?? 150;
@@ -334,7 +432,39 @@ export const taxPayout = (
   return { from, total };
 };
 
-/** Shared accumulator for an active clue: the effect instance id that applies. */
+/** Prabhas' confiscation: everyone else loses a flat % — owner gains nothing. */
+export const confiscatePayout = (
+  fx: RoomAbilityEffect,
+  players: Record<string, RoomPlayer>,
+): Record<string, number> => {
+  const pct = getAbilityForAvatar(fx.abilityId)?.params?.pct ?? 0.1;
+  const from: Record<string, number> = {};
+  for (const p of Object.values(players)) {
+    if (p.id === fx.playerId || p.isHost) continue;
+    const amt = round(p.score * pct);
+    if (amt > 0) from[p.id] = amt;
+  }
+  return from;
+};
+
+/** Highest current scorer (the natural grabHighest target). Optionally skips
+ *  a given id so a leader can't steal from themselves. */
+export const highestOf = (
+  players: Record<string, RoomPlayer>,
+  excludeId?: string,
+): RoomPlayer | undefined =>
+  sortDesc(eligiblePlayers(players)).filter((p) => p.id !== excludeId)[0];
+
+/**
+ * Shared accumulator for an active clue: the effect instance id that applies.
+ * Any of the "reveal a hint" kinds count, so the client renders the hint for
+ * the effect's owner (or for everyone, in the kr$na community case).
+ */
+const CLUE_KINDS: ReadonlySet<string> = new Set([
+  "clue", "clueSkeleton", "clue2", "clue3", "clueFirstLast",
+  "clueLength", "clueVague", "clueCommunity",
+]);
+
 export const activeClueFor = (
   effects: Record<string, RoomAbilityEffect> | undefined,
   meId: string,
@@ -343,7 +473,20 @@ export const activeClueFor = (
   Object.values(effects || {}).find(
     (e) =>
       e.playerId === meId &&
-      e.kind === "clue" &&
+      e.kind !== undefined &&
+      CLUE_KINDS.has(e.kind) &&
+      e.status === "applied" &&
+      e.appliedToQuestionId === questionId,
+  );
+
+/** kr$na's community clue: revealed to EVERYONE on this question, if any. */
+export const activeCommunityClueFor = (
+  effects: Record<string, RoomAbilityEffect> | undefined,
+  questionId?: string,
+): RoomAbilityEffect | undefined =>
+  Object.values(effects || {}).find(
+    (e) =>
+      e.kind === "clueCommunity" &&
       e.status === "applied" &&
       e.appliedToQuestionId === questionId,
   );
