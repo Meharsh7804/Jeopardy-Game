@@ -39,20 +39,23 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Static assets (same-origin): cache-first with network fallback
+  // Static assets (same-origin): stale-while-revalidate. Serve the cached copy
+  // instantly for a fast load, but kick off a network refresh in the background
+  // so a stale bundle is replaced within seconds instead of living forever.
+  // Cached-on-failure fallback still covers offline.
   if (isSameOrigin) {
     e.respondWith(
       caches.match(e.request).then((hit) => {
-        if (hit) return hit;
-        return fetch(e.request)
+        const network = fetch(e.request)
           .then((res) => {
-            const copy = res.clone();
             if (res.ok) {
+              const copy = res.clone();
               caches.open(CACHE).then((c) => c.put(e.request, copy));
             }
             return res;
           })
           .catch(() => hit);
+        return hit || network;
       }),
     );
     return;

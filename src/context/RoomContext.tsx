@@ -313,9 +313,17 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
     let cancelled = false;
     (async () => {
       try {
-        const snap = await get(ref(db, `rooms/${roomCode}`));
+        // Guard against a stalled Firebase read leaving the UI on a permanent
+        // blank/black screen. If the lookup can't resolve within the timeout,
+        // treat it as "no room to restore" and fall through to the lobby.
+        const snap = await Promise.race([
+          get(ref(db, `rooms/${roomCode}`)),
+          new Promise<null>((resolve) => {
+            window.setTimeout(() => resolve(null), 2500);
+          }),
+        ]);
         if (cancelled) return;
-        if (!snap.exists()) {
+        if (!snap || !snap.exists()) {
           clearSession();
           setRoomCode(null);
           setHydrated(true);
