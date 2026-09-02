@@ -1147,9 +1147,9 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                       </div>
 
                       {!unlocked && !secret && hint && (
-                        <div className="mt-3 pt-2.5 border-t border-white/5 text-[11px] text-amber-300/80 font-medium flex items-center gap-1.5">
-                          <Sparkles className="w-3 h-3 shrink-0 text-amber-400" />
-                          <span className="truncate">{t(hint.key, hint.params)}</span>
+                        <div className="mt-3 pt-2.5 border-t border-white/5 text-[11px] text-amber-300/80 font-medium flex items-start gap-1.5">
+                          <Sparkles className="w-3 h-3 shrink-0 text-amber-400 mt-[1px]" />
+                          <span>{t(hint.key, hint.params)}</span>
                         </div>
                       )}
                     </div>

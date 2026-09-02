@@ -77,7 +77,7 @@ export function useWrongStreakEncouragement(
             subtitle: "Four wrong? Even Magellan got lost.",
             tone: "playful",
           });
-        } else if (streak.current >= 6 && streak.current % 3 === 0) {
+        } else if (streak.current >= 3) {
           momentBus.emit({
             icon: "🌫️",
             title: "Fog of war",
@@ -86,7 +86,7 @@ export function useWrongStreakEncouragement(
           });
         }
         // Funny secret badge: a full brain freeze.
-        if (streak.current >= 6 && grantAchievement("brainFreeze")) {
+        if (streak.current >= 3 && grantAchievement("brainFreeze")) {
           soundManager.playEgg();
           achievementBus.emit("brainFreeze");
         }
