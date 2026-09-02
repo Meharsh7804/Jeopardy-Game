@@ -5,7 +5,7 @@ import { useQuizLibrary } from "../context/QuizLibraryContext";
 import { useSettings } from "../context/SettingsContext";
 import { db } from "../firebase";
 import { ref, onValue } from "firebase/database";
-import type { Quiz } from "../types/jeopardy";
+import type { Quiz, Category } from "../types/jeopardy";
 import {
   Lock,
   Play,
@@ -114,13 +114,21 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   const unlockedCount = ACHIEVEMENT_IDS.filter((id) => profile.achievements[id]).length;
   const lockedCount = ACHIEVEMENT_IDS.length - unlockedCount;
 
+  // Guard against malformed quiz data from the shared Firebase library (some
+  // older/foreign packs may lack a `categories` array). Treat missing as empty
+  // so the create-game screen never crashes to a black screen.
+  const categoriesOf = (q: Quiz | undefined): Category[] => {
+    const cats = q?.categories;
+    return Array.isArray(cats) ? cats : [];
+  };
+
   const selectedQuiz = quizzes.find((q) => q.id === selectedQuizId) ?? quizzes[0];
 
   const filteredQuizzes = quizSearch.trim()
     ? quizzes.filter(
         (q) =>
-          q.title.toLowerCase().includes(quizSearch.toLowerCase()) ||
-          q.description?.toLowerCase().includes(quizSearch.toLowerCase()),
+          (q.title || "").toLowerCase().includes(quizSearch.toLowerCase()) ||
+          (q.description || "").toLowerCase().includes(quizSearch.toLowerCase()),
       )
     : quizzes;
 
@@ -200,12 +208,10 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
 
   // ── 1. CREATE GAME -> FULL-SCREEN HOST SETUP PAGE ────────────────────────
   if (createOpen) {
-    const totalQuestions = selectedQuiz
-      ? selectedQuiz.categories.reduce(
-          (acc, cat) => acc + (cat.questions?.length || 0),
-          0
-        )
-      : 0;
+    const totalQuestions = categoriesOf(selectedQuiz).reduce(
+      (acc, cat) => acc + (cat.questions?.length || 0),
+      0
+    );
     const estMinutes = Math.max(5, Math.ceil((totalQuestions * 35) / 60));
 
     return (
@@ -377,7 +383,8 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                   <>
                     {filteredQuizzes.map((q) => {
                       const isSelected = selectedQuizId === q.id;
-                      const qCount = q.categories.reduce(
+                      const qCats = categoriesOf(q);
+                      const qCount = qCats.reduce(
                         (acc, cat) => acc + (cat.questions?.length || 0),
                         0
                       );
@@ -411,7 +418,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                               </p>
                             </div>
                             <div className="flex items-center gap-3 mt-1 pl-5 text-[10px] font-bold text-text-muted">
-                              <span>{q.categories.length} Categories</span>
+                              <span>{qCats.length} Categories</span>
                               <span>•</span>
                               <span>{qCount} Questions</span>
                             </div>
@@ -449,7 +456,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                   <h3 className="text-sm font-display font-black text-white truncate">{selectedQuiz.title}</h3>
 
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {selectedQuiz.categories.slice(0, 5).map((c) => (
+                    {categoriesOf(selectedQuiz).slice(0, 5).map((c) => (
                       <span
                         key={c.id}
                         className="px-2 py-0.5 rounded-md bg-black/40 border border-white/10 text-[9px] font-bold text-white/90 truncate max-w-[120px]"
@@ -457,9 +464,9 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                         {c.name}
                       </span>
                     ))}
-                    {selectedQuiz.categories.length > 5 && (
+                    {categoriesOf(selectedQuiz).length > 5 && (
                       <span className="px-2 py-0.5 rounded-md bg-black/40 border border-white/10 text-[9px] font-bold text-text-muted">
-                        +{selectedQuiz.categories.length - 5} more
+                        +{categoriesOf(selectedQuiz).length - 5} more
                       </span>
                     )}
                   </div>
