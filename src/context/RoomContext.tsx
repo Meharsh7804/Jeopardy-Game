@@ -1207,18 +1207,27 @@ const existingRoom = snap.val() as Room;
   // Called by the host room's watcher when a pending immediate effect appears.
   const applyImmediateAbility = useCallback(
     async (effectPlayerId: string) => {
-      if (!roomCode || !room || room.hostId !== myId) return;
-      let fx = room.abilityEffects?.[effectPlayerId];
-      // Race guard: the watcher fired from a snapshot that may already be
-      // stale (the player's effect landing milliseconds behind). If the local
-      // effect is missing, pull the live one so an immediate ability can never
-      // silently fail to resolve — applying it is a one-shot, so re-reading is safe.
+      if (!roomCode || !myId) return;
+      // Critical: never trust the host's (potentially stale) React `room.players`
+      // snapshot to resolve an ability. The watcher fires the moment an effect
+      // lands, but the scores that snapshot holds may still be behind — a stale
+      // read makes steal/tax/swap/halve silently apply 0 (or get skipped) while
+      // the effect is still consumed. Pull the authoritative players alongside
+      // the effect in ONE get, so every branch computes against live scores.
+      const liveRoom = await get(ref(db, `rooms/${roomCode}`));
+      const liveVal = liveRoom.val() as (Room | null) | undefined;
+      const livePlayers = liveVal?.players ?? {};
+      // Only the host resolves immediate abilities — verify against live data.
+      if (!liveVal || liveVal.hostId !== myId) return;
+      let fx = liveVal.abilityEffects?.[effectPlayerId];
+      // Race guard: if the watcher fired before the effect itself landed, fall
+      // back to a single-effect read — applying it is one-shot, so re-reading is safe.
       if (!fx) {
         const live = await get(ref(db, `rooms/${roomCode}/abilityEffects/${effectPlayerId}`));
         fx = live.val() as RoomAbilityEffect | null ?? undefined;
       }
       if (!fx || fx.status !== "pending" || !isImmediateKind(fx.kind)) return;
-      const players = room.players;
+      const players = livePlayers;
       const def = getAbilityForAvatar(fx.abilityId);
       const abilityName = def?.abilityName ?? "Ability";
       const updates: Record<string, any> = {};
@@ -1345,7 +1354,7 @@ const existingRoom = snap.val() as Room;
           const ownerName = players[fx.playerId]?.name ?? "Player";
           const fromE = buildScoreChange(
             target.id,
-            amt,
+            target.score ?? 0,
             -amt,
             `${target.name ?? "Player"} lost ${Math.round(pct * 100)}% ($${amt}) to ${ownerName} [${abilityName}]`,
           );
@@ -1421,7 +1430,7 @@ const existingRoom = snap.val() as Room;
       updates[`abilityEffects/${effectPlayerId}`] = null;
       await update(ref(db, `rooms/${roomCode}`), updates);
     },
-    [roomCode, room, myId],
+    [roomCode, myId],
   );
 
   // ── Leave / cleanup ───────────────────────────────────────────────────────

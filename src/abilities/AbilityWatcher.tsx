@@ -12,6 +12,11 @@ import { isImmediateKind } from "./engine";
 export const AbilityWatcher: React.FC = () => {
   const { room, myId, applyImmediateAbility } = useRoom();
   const knownRef = useRef<Set<string>>(new Set());
+  // Serialize host resolution so back-to-back immediate abilities (e.g. a steal
+  // followed by a halve on the same target in the same snapshot) never compute
+  // from overlapping/stale reads and race their Firebase writes. Each effect is
+  // processed one at a time; the next starts only after the previous commit.
+  const resolveChainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (!room) return;
@@ -35,7 +40,7 @@ export const AbilityWatcher: React.FC = () => {
 
       // The host resolves instant effects (boost / steal / halve / tax).
       if (room.hostId === myId && fx.status === "pending" && isImmediateKind(fx.kind)) {
-        applyImmediateAbility(pid);
+        resolveChainRef.current = resolveChainRef.current.then(() => applyImmediateAbility(pid));
       }
     }
     // Only `abilityEffects` transitions matter; `room`/`room.players` are
