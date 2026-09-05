@@ -530,8 +530,18 @@ const code = genId(6);
       );
       // Write activeQuestion, clear buzzes, and flip phase atomically.
       // Every subscriber (host + all players) reacts to the same snapshot.
+      //
+      // Stamp pending question-scoped effects from the FRESHEST server state,
+      // not the host's local `room.abilityEffects` echo. A question-scoped
+      // activation made moments before this tile click may not have echoed to
+      // the host yet — reading it here guarantees the effect is stamped onto
+      // the question that is now opening, so it can never silently go stale.
+      const effectsSnap = await get(ref(db, `rooms/${roomCode}/abilityEffects`));
+      const liveEffects: Record<string, RoomAbilityEffect> = effectsSnap.exists()
+        ? (effectsSnap.val() as Record<string, RoomAbilityEffect>)
+        : {};
       const abilityUpdates: Record<string, any> = {};
-      for (const [pid, fx] of Object.entries(room?.abilityEffects || {})) {
+      for (const [pid, fx] of Object.entries(liveEffects)) {
         if (isQuestionScopedKind(fx.kind) && fx.status === "pending") {
           abilityUpdates[`abilityEffects/${pid}/status`] = "applied";
           abilityUpdates[`abilityEffects/${pid}/appliedToQuestionId`] = question.id;
