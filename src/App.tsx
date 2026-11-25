@@ -1,17 +1,23 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, Suspense, type ReactNode, lazy } from 'react';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { QuizLibraryProvider } from './context/QuizLibraryContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { RoomLobby } from './components/RoomLobby';
-import { HostRoom } from './components/HostRoom';
-import { PlayerRoom } from './components/PlayerRoom';
-import { QuizEditor } from './components/QuizEditor';
 import { FirebaseSetup } from './components/FirebaseSetup';
+import { LoadingSplash } from './components/LoadingSplash';
 import { isFirebaseConfigValid } from './firebase';
 import { DelightLayer } from './delight/DelightLayer';
+import { DynamicBackground } from './components/DynamicBackground';
 import type { Quiz } from './types/jeopardy';
 
-type AppView = 'lobby' | 'host' | 'player' | 'editor';
+// Code-split heavy screens so the initial bundle stays small and the first
+// paint is fast. Each falls back to the branded splash while it loads.
+const HostRoom = lazy(() => import('./components/HostRoom').then((m) => ({ default: m.HostRoom })));
+const PlayerRoom = lazy(() => import('./components/PlayerRoom').then((m) => ({ default: m.PlayerRoom })));
+const QuizEditor = lazy(() => import('./components/QuizEditor').then((m) => ({ default: m.QuizEditor })));
+const ProfilePage = lazy(() => import('./components/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+
+type AppView = 'lobby' | 'host' | 'player' | 'editor' | 'profile';
 
 function AppContent() {
   const { room, isHost, leaveRoom, hydrated } = useRoom();
@@ -22,8 +28,6 @@ function AppContent() {
   const [navReady, setNavReady] = useState(false);
 
   // ── Derive view from room state once hydrated ────────────────────────────
-  // On refresh, the room context auto-rejoins the persisted room. We wait for
-  // hydration before choosing a view so the lobby never flashes.
   useEffect(() => {
     if (!hydrated) return;
     setNavReady(true);
@@ -34,8 +38,7 @@ function AppContent() {
     }
   }, [hydrated, room, isHost, editingQuiz]);
 
-  // ── Browser Back via popstate ────────────────────────────────────────────
-  // When the user presses Back after entering a room, leave cleanly.
+  // ── Browser Back via popstate ─────────────────────────────────────────────
   const handlePopState = useCallback(() => {
     const hash = window.location.hash.replace('#', '').trim();
     if (!hash && (view === 'host' || view === 'player') && room) {
@@ -48,7 +51,6 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [handlePopState]);
 
-  // ── Navigation helpers ───────────────────────────────────────────────────
   const handleHostEntersRoom = () => {
     setView('host');
     history.pushState({ view: 'host' }, '');
@@ -59,7 +61,6 @@ function AppContent() {
   };
   const handleLeave = () => {
     setView('lobby');
-    // replaceState so Back doesn't re-enter the room we just left.
     history.replaceState({ view: 'lobby' }, '', window.location.pathname);
     leaveRoom();
   };
@@ -76,22 +77,42 @@ function AppContent() {
     setEditingQuiz(null);
     setView('lobby');
   };
+  const handleOpenProfile = () => {
+    setView('profile');
+  };
+  const handleCloseProfile = () => {
+    setView('lobby');
+  };
 
-  // ── Render ───────────────────────────────────────────────────────────────
-  // Gate rendering until hydration completes to avoid a flash of the lobby.
   let content: ReactNode;
   if (!navReady) {
-    content = null; // or a minimal loader
+    content = <LoadingSplash message="Restoring your session…" />;
   } else if (view === 'editor') {
     content = (
-      <div className="min-h-screen flex flex-col">
-        <QuizEditor quizToEdit={editingQuiz} onClose={handleCloseEditor} />
-      </div>
+      <Suspense fallback={<LoadingSplash message="Opening editor…" />}>
+        <div className="min-h-screen flex flex-col">
+          <QuizEditor quizToEdit={editingQuiz} onClose={handleCloseEditor} />
+        </div>
+      </Suspense>
     );
   } else if (view === 'host' && room) {
-    content = <HostRoom onLeave={handleLeave} />;
+    content = (
+      <Suspense fallback={<LoadingSplash message="Loading host dashboard…" />}>
+        <HostRoom onLeave={handleLeave} />
+      </Suspense>
+    );
   } else if (view === 'player' && room) {
-    content = <PlayerRoom onLeave={handleLeave} />;
+    content = (
+      <Suspense fallback={<LoadingSplash message="Joining game…" />}>
+        <PlayerRoom onLeave={handleLeave} />
+      </Suspense>
+    );
+  } else if (view === 'profile') {
+    content = (
+      <Suspense fallback={<LoadingSplash message="Loading profile…" />}>
+        <ProfilePage onBack={handleCloseProfile} />
+      </Suspense>
+    );
   } else {
     content = (
       <RoomLobby
@@ -99,13 +120,17 @@ function AppContent() {
         onPlayerEntersRoom={handlePlayerEntersRoom}
         onCreateQuiz={handleCreateQuiz}
         onEditQuiz={handleEditQuiz}
+        onOpenProfile={handleOpenProfile}
       />
     );
   }
 
   return (
     <>
-      {content}
+      <DynamicBackground />
+      <div className="relative z-10 min-h-screen">
+        {content}
+      </div>
       <DelightLayer />
     </>
   );

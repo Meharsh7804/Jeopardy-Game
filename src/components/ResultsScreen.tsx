@@ -1,30 +1,24 @@
-import React, { useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion, animate } from "framer-motion";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import {
-  Trophy,
-  Crown,
-  Check,
-  X,
-  Zap,
-  Target,
-  RotateCcw,
+  Share2,
+  Copy,
+  Download,
   LogOut,
-  Flame,
-  Medal,
-  Sparkles,
-  Award,
-  PartyPopper,
-  Undo2,
-  Users,
-  Flag,
-  Coins,
+  ScrollText,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import type { RoomPlayer } from "../types/jeopardy";
-import { PlayerAvatar } from "../utils/playerAvatar";
+import { getAvatarByIdOrSeed } from "../utils/avatarImages";
 import { useSettings } from "../context/SettingsContext";
 import { ConfettiBurst } from "./ConfettiBurst";
-import { ACHIEVEMENT_ICONS } from "../utils/achievements";
-import { achievementKey } from "../utils/profile";
+import {
+  achievementKey,
+  achievementProgress,
+  ACHIEVEMENT_IDS,
+  isSecretAchievement,
+  loadProfile,
+} from "../utils/profile";
 import type { AchievementId } from "../utils/profile";
 import { momentBus } from "../delight/moments";
 import { confettiBus } from "../delight/celebrate";
@@ -97,126 +91,31 @@ const computeWinCelebration = (
   return { tier, headline: c.headline, sub: c.sub, confetti: c.confetti, sound: c.sound, legendary };
 };
 
-// ─── Match Memories: the story of what just happened ────────────────────────
-
-interface MemoryCard {
-  Icon: typeof Trophy;
-  label: string;
-  value: string;
-  note: string;
-}
-
-const buildMemories = (
-  players: { id: string; score: number; bestStreak?: number }[],
-  memory: ReturnType<typeof getMatchMemory>,
-): MemoryCard[] => {
-  const top = players[0];
-  const second = players[1];
-  const margin = top && second ? (top.score ?? 0) - (second.score ?? 0) : 0;
-  const cards: MemoryCard[] = [];
-
-  if (memory.longestStreak >= 2) {
-    cards.push({
-      Icon: Flame,
-      label: "Longest Streak",
-      value: `${memory.longestStreak}×`,
-      note: memory.longestStreak >= 5 ? "A professor was among us." : "Momentum found its feet.",
-    });
-  }
-  if (memory.biggestComeback >= 100) {
-    cards.push({
-      Icon: Undo2,
-      label: "Biggest Comeback",
-      value: `${memory.biggestComeback} pts`,
-      note: memory.biggestComeback >= 400 ? "Dug out of the canyon." : "Clawed it back.",
-    });
-  }
-  if (memory.fastestAnswer != null) {
-    cards.push({
-      Icon: Zap,
-      label: "Fastest Answer",
-      value: fmtReaction(memory.fastestAnswer),
-      note: memory.fastestAnswer <= 900 ? "Blur-fast. Illegal, almost." : "Quick on the draw.",
-    });
-  }
-  if (memory.hardestQuestion > 0) {
-    cards.push({
-      Icon: Target,
-      label: "Toughest Tile",
-      value: `$${memory.hardestQuestion}`,
-      note: "The uncharted deep was conquered.",
-    });
-  }
-  if (memory.biggestSwing >= 100) {
-    cards.push({
-      Icon: Coins,
-      label: "Biggest Swing",
-      value: `${memory.biggestSwing} pts`,
-      note: "One moment shifted the whole map.",
-    });
-  }
-  if (memory.buzzerBattle >= 2) {
-    cards.push({
-      Icon: Users,
-      label: "Buzzer Brawl",
-      value: `${memory.buzzerBattle} in`,
-      note: memory.buzzerBattle >= 4 ? "A full-on scrum." : "Friendly scraps.",
-    });
-  }
-  if (players.length >= 2 && margin > 0) {
-    cards.push({
-      Icon: Flag,
-      label: "Closest Finish",
-      value: `${margin} pt${margin === 1 ? "" : "s"}`,
-      note: margin === 1 ? "Decided by a heartbeat." : "A photo finish.",
-    });
-  }
-  return cards;
-};
-
-/** Counts up to `value` once, after `delay` ms. */
-const ScoreCount: React.FC<{ value: number; delay?: number }> = ({ value, delay = 0 }) => {
-  const reduce = !!useReducedMotion();
-  const [val, setVal] = useState(reduce ? value : 0);
-  useEffect(() => {
-    if (reduce) {
-      setVal(value);
-      return;
-    }
-    const t = window.setTimeout(() => {
-      const controls = animate(0, value, {
-        duration: 1.3,
-        ease: [0.22, 1, 0.36, 1],
-        onUpdate: (v) => setVal(Math.round(v)),
-      });
-      return () => controls.stop();
-    }, delay);
-    return () => window.clearTimeout(t);
-  }, [value, delay, reduce]);
-  return <>{val.toLocaleString()}</>;
-};
-
 interface ResultsScreenProps {
   players: RoomPlayer[]; // already sorted by score descending
   myId?: string;
   onPlayAgain?: () => void;
   onExit: () => void;
   exitLabel?: string;
-  waitingNote?: string; // shown to non-hosts while they wait for a rematch
+  waitingNote?: string;
   /** Achievements the current player unlocked during/at the end of this game. */
   myAwards?: AchievementId[];
   /** Encouragement messages for locked achievements ("next time buzz under 3s…"). */
   myHints?: { key: string; params?: Record<string, string | number> }[];
   /** True when every achievement is already unlocked — shown as a celebratory note. */
   allUnlocked?: boolean;
+  /** Room code shown in the finale broadcast header. */
+  roomCode?: string;
+  /** Quiz pack title shown in the finale broadcast header. */
+  quizTitle?: string;
+  /** Opens the host's score-history overlay from the finale broadcast header. */
+  onOpenHistory?: () => void;
 }
 
 interface FunAward {
-  Icon: typeof Trophy;
   label: string;
   value: string;
   playerName: string;
-  accent: string;
 }
 
 export const ResultsScreen: React.FC<ResultsScreenProps> = ({
@@ -225,60 +124,108 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   onPlayAgain,
   onExit,
   exitLabel = "Exit",
-  waitingNote,
   myAwards = [],
   myHints = [],
   allUnlocked = false,
+  roomCode = "YY3WCJ",
+  quizTitle = "QUIZ 30 (HINDI)",
+  onOpenHistory,
 }) => {
   const { t } = useSettings();
-  const winner = players[0];
-  const iWon = !!winner && winner.id === myId && (winner.score ?? 0) > 0;
-  const hasWinner = !!winner && (winner.score ?? 0) > 0;
+  const standings = useMemo(() => {
+    const seenPlayerIds = new Set<string>();
+    return players.filter((player) => {
+      if (seenPlayerIds.has(player.id)) return false;
+      seenPlayerIds.add(player.id);
+      return true;
+    });
+  }, [players]);
+  const winner = standings[0];
+  const isTie = !!winner && standings.length > 1 && (winner.score ?? 0) > 0 && winner.score === standings[1].score;
+  const winnerAvatar = winner ? getAvatarByIdOrSeed(winner.avatar, winner.id) : undefined;
+  const [failedAvatarId, setFailedAvatarId] = useState<string | null>(null);
 
   const [celebrationTier, setCelebrationTier] = useState<WinTier>("normal");
   const [isLegendary, setIsLegendary] = useState(false);
+  const [copiedShare, setCopiedShare] = useState(false);
 
-  const podiumOrder = [players[1], players[0], players[2]].filter(Boolean) as RoomPlayer[];
-  const rest = players.slice(3);
+  const handleShare = async () => {
+    const lines = ["🏆 Buzzing With Quizzing - Results", ...standings.map((p, i) => `${i + 1}. ${p.name} - $${p.score}`)];
+    const text = lines.join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2000);
+    } catch {}
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2000);
+    } catch {}
+  };
+
+  const handleDownloadCard = () => {
+    const w = 1200, h = 630;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const g = ctx.createLinearGradient(0,0,w,h);
+    g.addColorStop(0,"#020617"); g.addColorStop(1,"#1e1b4b");
+    ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle = "#8b5cf6"; ctx.font = "bold 28px sans-serif"; ctx.fillText("BUZZING WITH QUIZZING", 60, 70);
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 56px sans-serif"; ctx.fillText(isTie ? "It's a Tie!" : "Final Results", 60, 140);
+    ctx.fillStyle = "#94a3b8"; ctx.font = "24px sans-serif"; ctx.fillText(new Date().toLocaleDateString(), 60, 180);
+    const top = standings.slice(0,5);
+    top.forEach((p,i) => {
+      const y = 250 + i*72;
+      ctx.fillStyle = i===0 ? "rgba(251,191,36,0.18)" : "rgba(255,255,255,0.06)";
+      ctx.fillRect(60,y-42,1080,58);
+      ctx.fillStyle = i===0 ? "#fbbf24" : "#e2e8f0";
+      ctx.font = "bold 30px sans-serif";
+      ctx.fillText(`${i+1}. ${p.name}`, 90, y);
+      ctx.textAlign = "right";
+      ctx.fillText(`$${p.score}`, 1110, y);
+      ctx.textAlign = "left";
+    });
+    const a = document.createElement("a");
+    a.download = "buzzing-results.png";
+    a.href = c.toDataURL("image/png");
+    a.click();
+  };
 
   // ── Fun awards: fastest buzzer, most correct, longest streak ───────────────
   const funAwards: FunAward[] = [];
-  if (players.length > 0) {
-    const fastest = players.filter((p) => p.fastestBuzz != null);
-    if (fastest.length > 1) {
+  if (standings.length > 0) {
+    const fastest = standings.filter((p) => p.fastestBuzz != null);
+    if (fastest.length > 0) {
       const best = fastest.reduce((a, b) => ((b.fastestBuzz as number) < (a.fastestBuzz as number) ? b : a));
       funAwards.push({
-        Icon: Zap,
         label: t("awardFastest"),
         value: fmtReaction(best.fastestBuzz),
         playerName: best.name,
-        accent: "text-primary-accent",
       });
     }
-    const mostCorrect = players.reduce((a, b) => ((b.correctCount ?? 0) > (a.correctCount ?? 0) ? b : a));
+    const mostCorrect = standings.reduce((a, b) => ((b.correctCount ?? 0) > (a.correctCount ?? 0) ? b : a));
     if ((mostCorrect.correctCount ?? 0) > 0) {
       funAwards.push({
-        Icon: Target,
         label: t("awardMostCorrect"),
         value: `${mostCorrect.correctCount}`,
         playerName: mostCorrect.name,
-        accent: "text-success-accent",
       });
     }
-    const streak = players.reduce((a, b) => ((b.bestStreak ?? 0) > (a.bestStreak ?? 0) ? b : a));
+    const streak = standings.reduce((a, b) => ((b.bestStreak ?? 0) > (a.bestStreak ?? 0) ? b : a));
     if ((streak.bestStreak ?? 0) > 1) {
       funAwards.push({
-        Icon: Flame,
         label: t("awardStreak"),
         value: `${streak.bestStreak}×`,
         playerName: streak.name,
-        accent: "text-orange-400",
       });
     }
   }
-
-  const showAwards = funAwards.length > 0 || myAwards.length > 0 || myHints.length > 0 || allUnlocked;
-  const showHints = myHints.length > 0 || allUnlocked;
 
   // A tailored, tier-aware celebration when the results land (once per mount).
   const resultEmitted = useRef(false);
@@ -286,16 +233,17 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
     if (resultEmitted.current) return;
     resultEmitted.current = true;
     const memory = getMatchMemory();
-    const top = players[0];
-    const second = players[1];
+    const top = standings[0];
+    const second = standings[1];
     const margin = top && second ? (top.score ?? 0) - (second.score ?? 0) : 0;
-    if (players.length >= 2) memory.closestFinish = margin;
+    if (standings.length >= 2) memory.closestFinish = margin;
 
-    const wc = computeWinCelebration(players, myId, memory);
-    const me = players.find((p) => p.id === myId);
-    const iWon = me && me.id === winner?.id && (winner.score ?? 0) > 0;
+    const wc = computeWinCelebration(standings, myId, memory);
+    const me = standings.find((p) => p.id === myId);
+    const tie = !!winner && standings.length > 1 && (winner.score ?? 0) > 0 && winner.score === standings[1].score;
+    const iWonNow = !tie && me && me.id === winner?.id && (winner.score ?? 0) > 0;
 
-    if (iWon) {
+    if (iWonNow) {
       setCelebrationTier(wc.tier);
       setIsLegendary(wc.legendary);
       const tierIcon: Record<WinTier, string> = {
@@ -336,7 +284,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
     // A legendary match gets its own banner even if you didn't take it.
     if (wc.legendary) {
       setIsLegendary(true);
-      if (!iWon) {
+      if (!iWonNow) {
         momentBus.emit({
           icon: "🌟",
           title: "LEGENDARY MATCH",
@@ -347,45 +295,78 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
       }
     }
     // A one-point squeaker or photo finish gets its own special gasp.
-    emitCloseWin(players, myId);
-  }, [players, myId, winner]);
+    emitCloseWin(standings, myId);
+  }, [standings, myId, winner]);
 
-  const podiumStyle: Record<
-    number,
-    { ring: string; badge: string; height: string; label: string; name: string }
-  > = {
-    1: {
-      ring: "border-warning-accent/60 bg-gradient-to-b from-warning-accent/25 to-warning-accent/5 shadow-[0_0_60px_rgba(245,158,11,0.35)]",
-      badge: "bg-gradient-to-r from-warning-accent to-amber-500 text-black",
-      height: "h-64",
-      label: t("champion"),
-      name: "text-warning-accent",
-    },
-    2: {
-      ring: "border-slate-300/40 bg-gradient-to-b from-slate-300/20 to-slate-300/5",
-      badge: "bg-slate-300 text-slate-900",
-      height: "h-44",
-      label: t("champion2nd"),
-      name: "text-slate-200",
-    },
-    3: {
-      ring: "border-orange-700/40 bg-gradient-to-b from-orange-700/20 to-orange-700/5",
-      badge: "bg-orange-700 text-white",
-      height: "h-36",
-      label: t("champion3rd"),
-      name: "text-orange-200",
-    },
-  };
-
-  const memories = buildMemories(players, getMatchMemory());
   const rootGlow = isLegendary
     ? "win-legendary"
     : celebrationTier === "dominant"
       ? "win-dominant"
       : "";
 
+  const matchMemory = getMatchMemory();
+  const fastestBuzzMs = standings.reduce<RoomPlayer | undefined>(
+    (best, player) => !best || (player.fastestBuzz ?? Infinity) < (best.fastestBuzz ?? Infinity) ? player : best,
+    undefined,
+  );
+  const fastestBuzzText = fmtReaction(matchMemory.fastestAnswer ?? fastestBuzzMs?.fastestBuzz);
+  const badgeProgress = useMemo(() => {
+    const profile = loadProfile();
+    const progress = achievementProgress(profile);
+    return ACHIEVEMENT_IDS
+      .filter((id) => !isSecretAchievement(id) || Boolean(profile.achievements[id]) || myAwards.includes(id))
+      .map((id) => {
+        const unlocked = Boolean(profile.achievements[id]) || myAwards.includes(id);
+        const key = achievementKey(id);
+        return {
+          key: id,
+          title: t(key).toUpperCase(),
+          description: t(`${key}Desc`),
+          unlocked,
+          progress: unlocked ? 1 : Math.max(0, Math.min(1, progress[id])),
+        };
+      });
+  }, [myAwards, t]);
+  const nextBadgeProgress = badgeProgress.reduce(
+    (best, badge) => badge.unlocked ? best : Math.max(best, badge.progress),
+    0,
+  );
+  const badgePlaques = [
+    ...funAwards.map((award) => ({
+      key: `award-${award.label}`,
+      title: award.label === t("awardFastest")
+        ? "SPEED DEMON"
+        : award.label === t("awardMostCorrect")
+          ? "MOST CORRECT"
+          : "LONGEST STREAK",
+      description: `${award.playerName} • ${award.value}`,
+      unlocked: true,
+      progress: 1,
+    })),
+    ...(allUnlocked
+      ? [{
+          key: "all-unlocked",
+          title: "COLLECTION COMPLETE",
+          description: t("allUnlocked"),
+          unlocked: true,
+          progress: 1,
+        }]
+      : myHints[0]
+        ? [{
+            key: "next-challenge",
+            title: "NEXT CHALLENGE",
+            description: t(myHints[0].key, myHints[0].params),
+            unlocked: false,
+            progress: nextBadgeProgress,
+          }]
+        : []),
+    ...badgeProgress,
+  ];
+
   return (
-    <div className={`flex flex-col items-center justify-center min-h-[75vh] gap-8 text-center p-6 w-full relative ${rootGlow}`}>
+    <div className={`h-screen flex flex-col overflow-hidden w-full relative ${rootGlow}`}>
+      <ConfettiBurst />
+
       {/* Legendary-match golden flash (brief, then settles) */}
       {isLegendary && (
         <motion.div
@@ -396,513 +377,255 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           aria-hidden
         />
       )}
-      <ConfettiBurst />
 
-      {/* ── Headline — dynamic for winner vs. everyone else ────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.7 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 280, damping: 20, mass: 0.8 }}
-        className="relative flex flex-col items-center gap-1"
-      >
-        <div className="relative">
-          <div
-            className={`absolute inset-0 rounded-full blur-[80px] ${
-              iWon ? "bg-warning-accent/60" : "bg-primary-accent/40"
-            }`}
-          />
-          <motion.div
-            animate={iWon ? { y: [0, -6, 0], rotate: [0, -4, 4, 0] } : {}}
-            transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
-            className="relative z-10"
-          >
-            {iWon ? (
-              <Crown className="w-24 h-24 text-warning-accent fill-warning-accent drop-shadow-[0_0_40px_rgba(245,158,11,0.8)]" />
-            ) : (
-              <Trophy className="w-24 h-24 text-warning-accent drop-shadow-[0_0_40px_rgba(245,158,11,0.6)]" />
-            )}
-          </motion.div>
+      {/* ═══════════════════════════════════════════════════════════════
+          1. UNIFIED TOP FINALE HEADER — "FINAL BROADCAST // OFFICIAL MATCH RESULTS"
+          ═══════════════════════════════════════════════════════════════ */}
+      <header className="h-14 bg-[#FFFFFF] border-b-2 border-[#111111] px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0 shrink-0">
+            <div className="w-10 h-10 bg-[#FF3B1D] border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center shrink-0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="#FFD60A" stroke="#111111" strokeWidth="2" strokeLinejoin="round"><path d="M13 2 4 14h7l-1 8 10-12h-7z" /></svg>
+            </div>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="font-['Archivo_Black'] text-base sm:text-lg uppercase leading-none text-[#111111] truncate">{quizTitle}</span>
+              <span className="inline-flex items-center px-2 py-0.5 border-2 border-[#111111] bg-[#FFD60A] shadow-[2px_2px_0_#111111] font-mono text-xs sm:text-sm font-bold tracking-[0.14em] text-[#111111] shrink-0">
+                {roomCode}
+              </span>
+            </div>
         </div>
 
-        {iWon && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-            className="px-4 py-1.5 rounded-full bg-warning-accent/15 border border-warning-accent/40 text-warning-accent text-[10px] font-black uppercase tracking-[0.3em] mt-2 flex items-center gap-2"
-          >
-            <PartyPopper className="w-3.5 h-3.5" /> {t("champion")}
-          </motion.div>
-        )}
+        <div className="flex-1 flex items-center justify-center bg-[#111111] border-2 border-[#111111] px-3 py-2 min-w-0">
+          <span className="w-2 h-2 bg-[#FF3B1D] rounded-full animate-pulse shrink-0" />
+          <span className="font-mono text-[0.6875rem] font-bold tracking-[0.14em] uppercase text-[#FFD60A] truncate">FINAL BROADCAST // OFFICIAL MATCH RESULTS</span>
+        </div>
 
-        <motion.h2
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`text-5xl md:text-7xl font-display font-black tracking-tight leading-none mt-2 ${
-            iWon
-              ? "text-transparent bg-clip-text bg-gradient-to-b from-amber-300 via-warning-accent to-amber-600 drop-shadow-[0_0_30px_rgba(245,158,11,0.4)]"
-              : "text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50"
-          }`}
-        >
-          {iWon ? t("youWin") : t("gameOver")}
-        </motion.h2>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+              type="button"
+              onClick={onOpenHistory}
+              className="h-9 px-2.5 bg-[#FFFFFF] hover:bg-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-xs font-bold flex items-center gap-1.5"
+              title={t("scoreHistory")}
+            >
+              <ScrollText className="w-4 h-4 text-[#111111]" /> HISTORY
+          </button>
+          <button
+              type="button"
+              title={t("settingsTitle")}
+              className="w-9 h-9 bg-[#FFFFFF] hover:bg-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center"
+            >
+              <SettingsIcon className="w-4 h-4 text-[#111111]" />
+          </button>
+          <button
+              type="button"
+              onClick={onExit}
+              title={exitLabel}
+              className="w-9 h-9 bg-[#FFFFFF] hover:bg-[#FF3B1D] hover:text-white border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center text-[#111111]"
+            >
+              <LogOut className="w-4 h-4 text-[#111111]" />
+          </button>
+        </div>
+      </header>
 
-        {hasWinner && !iWon && (
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-            className="mt-2 text-base text-text-muted font-semibold flex items-center gap-2"
-          >
-            <Trophy className="w-4 h-4 text-warning-accent" />
-            {t("winnerIs", { name: winner.name })}
-          </motion.p>
-        )}
-      </motion.div>
+      {/* ═══════════════════════════════════════════════════════════════
+          2. THE BROAD SHEET — FRONT-PAGE EDITORIAL SPREAD
+          ═══════════════════════════════════════════════════════════════ */}
+      <main className="flex-1 min-h-0 max-w-7xl w-full mx-auto px-4 sm:px-6 py-3 flex flex-col">
+        <div className="flex-1 min-h-0 bg-[#F4EFE6] border-[3px] border-[#111111] shadow-[8px_8px_0px_#111111] flex flex-col overflow-hidden rounded-none">
+          <section className="relative min-h-[220px] sm:min-h-[250px] bg-[#FFFFFF] border-b-2 border-[#111111] grid grid-cols-1 lg:grid-cols-12 overflow-hidden shrink-0">
+            <div className="lg:col-span-7 relative z-20 p-5 sm:p-6 flex flex-col justify-center">
+              <h1
+                style={{ fontFamily: "'Archivo Black', sans-serif" }}
+                className="font-['Archivo_Black'] text-4xl sm:text-5xl xl:text-[54px] leading-[0.95] tracking-tight text-[#111111] uppercase"
+              >
+                THE BUZZING CHRONICLE
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="bg-[#111111] text-[#FFD60A] px-3 py-1 self-start font-mono text-[11px] font-bold tracking-wider uppercase">
+                  FINALE EDITION! // OFFICIAL MATCH SIGN-OFF
+                </div>
+                <span
+                  style={{ fontFamily: "'Archivo Black', sans-serif" }}
+                  className="bg-[#FFD60A] text-[#111111] border-2 border-[#111111] shadow-[3px_3px_0px_#111111] px-3 py-0.5 font-['Archivo_Black'] text-xs sm:text-sm tracking-widest uppercase inline-flex items-center gap-1.5"
+                >
+                  <svg className="w-7 h-5" viewBox="0 0 58 44" fill="#FFD60A" stroke="#111111" strokeWidth="2.5" strokeLinejoin="miter" aria-hidden="true">
+                    <path d="M6 38 8 14 19 25 29 5 39 25 50 14 52 38Z" />
+                    <path d="M8 38H50V42H8Z" />
+                    <path d="m17 16 3 4 3-4Z" fill="#FF3B1D" strokeWidth="1.5" />
+                    <path d="m27 10 3 4 3-4Z" fill="#00C271" strokeWidth="1.5" />
+                    <path d="m37 16 3 4 3-4Z" fill="#FF3B1D" strokeWidth="1.5" />
+                  </svg>
+                  CHAMPION
+                </span>
+              </div>
+              <p
+                style={{ fontFamily: "'Archivo Black', sans-serif" }}
+                className="font-['Archivo_Black'] text-2xl sm:text-3xl mt-3 text-[#111111] uppercase leading-tight"
+              >
+                {winner ? `${winner.name} CLAIMS ULTIMATE TRIVIA CROWN!` : "THE ULTIMATE TRIVIA CROWN AWAITS!"}
+              </p>
+            </div>
 
-      {/* ── Champion spotlight ─────────────────────────────────────────────── */}
-      {hasWinner && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="w-full max-w-md glass-panel-heavy rounded-3xl border border-warning-accent/30 bg-gradient-to-br from-warning-accent/10 to-transparent p-5 flex items-center gap-5 shadow-[0_0_40px_rgba(245,158,11,0.15)]"
-        >
-          <div className="relative shrink-0">
-            <PlayerAvatar
-              seed={winner.id}
-              avatar={winner.avatar}
-              name={winner.name}
-              size={64}
-              className="rounded-full ring-2 ring-warning-accent/60 shadow-[0_0_25px_rgba(245,158,11,0.4)]"
-            />
-            {iWon && (
-              <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-warning-accent text-black text-[9px] font-black uppercase">
-                {t("you")}
-              </span>
-            )}
-          </div>
-          <div className="min-w-0 text-left">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-warning-accent">
-              {t("finalScore")}
-            </p>
-            <p className="font-display font-black text-3xl text-white leading-tight truncate">
-              <ScoreCount value={winner.score ?? 0} delay={500} />
-            </p>
-            <p className="text-sm font-bold text-white truncate mt-0.5">{winner.name}</p>
-          </div>
-          <div className="ml-auto flex flex-col items-end gap-1.5 shrink-0">
-            <span className="flex items-center gap-1.5 text-xs font-bold text-success-accent">
-              <Check className="w-3.5 h-3.5" /> {winner.correctCount ?? 0}
-            </span>
-            <span className="flex items-center gap-1.5 text-xs font-bold text-danger-accent">
-              <X className="w-3.5 h-3.5" /> {winner.wrongCount ?? 0}
-            </span>
-            <span className="flex items-center gap-1.5 text-xs font-bold text-primary-accent">
-              <Target className="w-3.5 h-3.5" />{" "}
-              {accuracyOf(winner) === null ? "—" : `${accuracyOf(winner)}%`}
-            </span>
-          </div>
-        </motion.div>
-      )}
+            <div className="lg:col-span-5 relative h-full min-h-[210px] overflow-hidden">
+              {winnerAvatar && failedAvatarId !== winner?.id ? (
+                <img
+                  src={winnerAvatar.src}
+                  alt={`${winner?.name ?? "Champion"} avatar`}
+                  onError={() => winner && setFailedAvatarId(winner.id)}
+                  style={{ objectPosition: winnerAvatar.position }}
+                  className="absolute inset-0 w-full h-full object-cover object-center"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#F4EFE6] font-['Archivo_Black'] text-8xl uppercase text-[#111111]">
+                  {winner?.name.trim().charAt(0) || "?"}
+                </div>
+              )}
+              <div className="absolute inset-y-0 left-0 w-28 sm:w-36 bg-gradient-to-r from-[#FFFFFF] via-[#FFFFFF]/80 to-transparent z-10 pointer-events-none" />
 
-      {/* ── Podium ─────────────────────────────────────────────────────────── */}
-      {players.length > 0 && (
-        <div className="w-full max-w-2xl">
-          {players.length >= 2 ? (
-            /* Avatars sit ABOVE the podium block so they're never clipped */
-            <div className="flex flex-col gap-0">
-              {/* Avatar row — floats above the colored podium columns.
-                  Each column is padded-bottom by the difference between the
-                  tallest podium (1st = h-64 / 256px) and its own podium height
-                  so avatars visually sit right on top of their column. */}
-              <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end mb-0">
-                {podiumOrder.map((p, idx) => {
-                  const rank = Math.min(3, players.findIndex((x) => x.id === p.id) + 1);
-                  const style = podiumStyle[rank] ?? podiumStyle[1];
-                  const isMe = p.id === myId;
-                  // Unique celebration poses per rank via CSS rotate/translate
-                  const poseClass =
-                    rank === 1
-                      ? "animate-bounce" // champion bounces
-                      : rank === 2
-                      ? "[transform:rotate(-6deg)]" // 2nd tilts left
-                      : "[transform:rotate(6deg)]";  // 3rd tilts right
-                  // Push avatar down so it sits on top of its podium column.
-                  // 1st place (h-64 = 16rem) needs no padding; 2nd (h-44 = 11rem)
-                  // needs 5rem; 3rd (h-36 = 9rem) needs 7rem.
-                  const podiumPad: Record<number, string> = { 1: "pb-0", 2: "pb-5", 3: "pb-7" };
+              <div className="absolute bottom-3 right-3 z-20 bg-[#111111] text-[#FFD60A] border-2 border-[#FFFFFF] px-3 py-1 font-mono text-xs font-black shadow-[3px_3px_0px_#111111]">
+                {winner ? `${winner.score} PTS • ⚡ ${fastestBuzzText || "—"}` : "NO SCORE • ⚡ —"}
+              </div>
+            </div>
+          </section>
 
+          <section className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 bg-[#F4EFE6] border-b-2 border-[#111111] overflow-hidden">
+            <div className="lg:col-span-6 border-b-2 lg:border-b-0 lg:border-r-2 border-[#111111] flex flex-col min-h-0">
+              <div className="bg-[#111111] text-[#FFFFFF] px-4 py-2 flex items-center justify-between font-mono text-[11px] font-bold uppercase shrink-0">
+                <span className="text-[#FFD60A]">🏆 FINAL LEADERBOARD STANDINGS</span>
+                <span>{standings.length} CONTESTANTS</span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto divide-y-2 divide-[#111111]">
+                {standings.map((player, index) => {
+                  const avatar = getAvatarByIdOrSeed(player.avatar, player.id);
+                  const rowClass = index === 0
+                    ? "bg-[#FFD60A]/25"
+                    : index === 1
+                      ? "bg-[#FFFFFF]"
+                      : index === 2
+                        ? "bg-[#FFFFFF]/80"
+                        : "bg-[#F4EFE6]";
+                  const rankClass = index === 0
+                    ? "bg-[#FFD60A]"
+                    : index === 1
+                      ? "bg-[#E6E0D4]"
+                      : index === 2
+                        ? "bg-[#F4EFE6]"
+                        : "bg-[#FFFFFF]";
                   return (
-                    <motion.div
-                      key={p.id}
-                      initial={{ opacity: 0, y: -30 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 22,
-                        mass: 0.8,
-                        delay: 0.45 + 0.18 * idx,
-                      }}
-                      className={`flex flex-col items-center gap-1.5 ${podiumPad[rank] ?? "pb-0"}`}
-                    >
-                      {rank === 1 && (
-                        <motion.div
-                          initial={{ y: -20, opacity: 0, rotate: -20 }}
-                          animate={{ y: 0, opacity: 1, rotate: 0 }}
-                          transition={{ delay: 0.9, type: "spring", stiffness: 300, damping: 18 }}
-                        >
-                          <Crown className="w-9 h-9 text-warning-accent fill-warning-accent drop-shadow-lg mb-1" />
-                        </motion.div>
-                      )}
-                      {rank !== 1 && <div className="h-10" />}
-                      <div className={`relative ${poseClass}`}>
-                        <PlayerAvatar
-                          seed={p.id}
-                          avatar={p.avatar}
-                          name={p.name}
-                          size={rank === 1 ? 80 : 60}
-                          className={`rounded-full ring-2 ${
-                            rank === 1
-                              ? "ring-warning-accent/70 shadow-[0_0_30px_rgba(245,158,11,0.45)]"
-                              : rank === 2
-                              ? "ring-slate-300/50"
-                              : "ring-orange-700/50"
-                          }`}
-                        />
-                        {isMe && (
-                          <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-primary-accent text-white text-[9px] font-black uppercase">
-                            {t("you")}
+                    <div key={player.id} className={`px-4 py-2 flex items-center justify-between gap-2 ${rowClass}`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className={`w-7 h-7 flex items-center justify-center font-mono text-xs font-black border-2 border-[#111111] shrink-0 ${rankClass}`}>
+                          #{index + 1}
+                        </span>
+                        {avatar ? (
+                          <img
+                            src={avatar.src}
+                            alt={`${player.name} avatar`}
+                            style={{ objectPosition: avatar.position }}
+                            className="w-7 h-7 border border-[#111111] shrink-0 object-cover"
+                          />
+                        ) : (
+                          <span className="w-7 h-7 border border-[#111111] shrink-0 bg-[#FFFFFF] flex items-center justify-center font-['Archivo_Black'] text-xs">
+                            {player.name.trim().charAt(0) || "?"}
                           </span>
                         )}
+                        <span className="font-['Archivo_Black'] text-xs sm:text-sm text-[#111111] truncate uppercase">{player.name}</span>
                       </div>
-                      <p className={`font-display font-black text-xs sm:text-sm truncate w-full text-center leading-tight px-1 ${style.name}`}>
-                        {p.name}
-                      </p>
-                    </motion.div>
-                  );
-                })}
-              </div>
-
-              {/* Podium columns — no overflow-hidden so avatars above are safe */}
-              <div className="grid grid-cols-3 gap-3 sm:gap-5 items-end">
-                {podiumOrder.map((p, idx) => {
-                  const rank = Math.min(3, players.findIndex((x) => x.id === p.id) + 1);
-                  const style = podiumStyle[rank] ?? podiumStyle[1];
-                  return (
-                    <motion.div
-                      key={`podium-${p.id}`}
-                      initial={{ opacity: 0, y: 40 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 25,
-                        mass: 0.8,
-                        delay: 0.55 + 0.18 * idx,
-                      }}
-                      className={`${style.height} ${style.ring} rounded-t-3xl border border-b-0 flex flex-col items-center justify-center gap-2 px-2`}
-                    >
-                      <p className="font-display font-black text-2xl sm:text-4xl text-white drop-shadow">
-                        <ScoreCount value={p.score ?? 0} delay={700 + idx * 200} />
-                      </p>
-                      <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black tracking-widest ${style.badge}`}>
-                        {style.label}
-                      </span>
-                    </motion.div>
+                      <div className="flex items-center gap-2.5 shrink-0 font-mono text-[11px] font-bold">
+                        <span className="text-[#00C271]">✓{player.correctCount ?? 0}</span>
+                        <span className="text-[#FF3B1D]">✕{player.wrongCount ?? 0}</span>
+                        <span className="hidden sm:inline bg-[#FFFFFF] border border-[#111111] px-1.5 py-0.5">{accuracyOf(player) ?? 0}%</span>
+                        <span className="bg-[#111111] text-[#FFD60A] px-2.5 py-1 font-['Archivo_Black'] text-xs">{player.score} PTS</span>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="w-full max-w-md mx-auto"
-            >
-              <div className="glass-panel-heavy rounded-3xl border border-warning-accent/40 p-8 flex flex-col items-center gap-4 shadow-[0_0_50px_rgba(245,158,11,0.25)]">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-warning-accent/40 blur-2xl rounded-full" />
-                  <PlayerAvatar
-                    seed={players[0].id}
-                    avatar={players[0].avatar}
-                    name={players[0].name}
-                    size={96}
-                    className="relative z-10 rounded-full ring-4 ring-warning-accent/60 shadow-[0_0_40px_rgba(245,158,11,0.5)]"
-                  />
-                </div>
-                <p className="font-display font-black text-3xl text-white truncate max-w-full">
-                  {players[0].name}
-                </p>
-                <p className="font-display font-black text-5xl text-warning-accent">
-                  <ScoreCount value={players[0].score ?? 0} delay={600} />
-                </p>
-                <span className="px-3 py-1 rounded-lg bg-gradient-to-r from-warning-accent to-amber-500 text-black text-[10px] font-black tracking-widest">
-                  {t("champion")}
-                </span>
+
+            <div className="lg:col-span-6 flex flex-col min-h-0">
+              <div className="bg-[#111111] text-[#FFFFFF] px-4 py-2 flex items-center justify-between font-mono text-[11px] font-bold uppercase shrink-0">
+                <span className="text-[#00C271]">📊 MATCH ANALYSIS &amp; BADGES UNLOCKED</span>
+                <span className="text-[#FFD60A]">EDITOR'S PICKS</span>
               </div>
-            </motion.div>
-          )}
-        </div>
-      )}
-
-      {rest.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-          className="w-full max-w-2xl space-y-2"
-        >
-          {rest.map((p, i) => (
-            <div
-              key={p.id}
-              className={`flex items-center justify-between px-5 py-3 rounded-2xl border ${
-                p.id === myId ? "bg-primary-accent/15 border-primary-accent/30" : "bg-white/5 border-white/5"
-              }`}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="font-black text-text-muted w-6 text-center">#{i + 4}</span>
-                <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={28} className="shrink-0 rounded-full" />
-                <span className={`font-bold text-sm truncate ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
-                  {p.name} {p.id === myId && `(${t("you")})`}
-                </span>
-              </div>
-              <span className="font-display font-black text-xl text-white">{p.score}</span>
-            </div>
-          ))}
-        </motion.div>
-      )}
-
-      {/* ── Player stats ───────────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.9 }}
-        className="w-full max-w-2xl glass-panel-heavy p-6 rounded-3xl border border-white/10 shadow-xl space-y-3"
-      >
-        <p className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center justify-center gap-2">
-          <Zap className="w-4 h-4 text-warning-accent" /> {t("playerStats")}
-        </p>
-        <div className="space-y-2">
-          {players.map((p) => {
-            const acc = accuracyOf(p);
-            return (
-              <div
-                key={p.id}
-                className={`flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border ${
-                  p.id === myId ? "bg-primary-accent/15 border-primary-accent/30" : "bg-white/5 border-white/5"
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={24} className="shrink-0 rounded-full" />
-                  <span className={`font-bold text-sm truncate ${p.id === myId ? "text-primary-accent" : "text-white"}`}>
-                    {p.name}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-success-accent">
-                    <Check className="w-3.5 h-3.5" /> {p.correctCount ?? 0}
-                  </span>
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-danger-accent">
-                    <X className="w-3.5 h-3.5" /> {p.wrongCount ?? 0}
-                  </span>
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-primary-accent">
-                    <Target className="w-3.5 h-3.5" /> {acc === null ? "—" : `${acc}%`}
-                  </span>
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-warning-accent">
-                    <Zap className="w-3.5 h-3.5" /> {fmtReaction(p.fastestBuzz)}
-                  </span>
-                  <span
-                    className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-orange-400"
-                    title={t("statBestStreak")}
-                  >
-                    🔥 {(p.bestStreak ?? 0) > 1 ? p.bestStreak : "—"}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </motion.div>
-
-      {/* ── Awards & achievements ──────────────────────────────────────────── */}
-      {showAwards && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.0 }}
-          className="w-full max-w-2xl glass-panel-heavy p-6 rounded-3xl border border-white/10 shadow-xl space-y-5"
-        >
-          <p className="text-xs font-bold text-text-muted uppercase tracking-widest flex items-center justify-center gap-2">
-            <Medal className="w-4 h-4 text-warning-accent" /> {t("awardsTitle")}
-            <span className="text-text-muted/60 font-semibold normal-case">— {t("awardsSub")}</span>
-          </p>
-
-          {funAwards.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {funAwards.map((a) => (
-                <div
-                  key={a.label}
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/5 border border-white/5"
-                >
-                  <span className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                    <a.Icon className={`w-4 h-4 ${a.accent}`} />
-                  </span>
-                  <span className="min-w-0 text-left">
-                    <span className="block text-[9px] font-black uppercase tracking-widest text-text-muted">
-                      {a.label}
-                    </span>
-                    <span className="block font-display font-black text-sm text-white truncate">
-                      {a.playerName}
-                    </span>
-                    <span className="block text-[11px] font-bold text-text-muted">{a.value}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {myAwards.length > 0 && (
-            <div className="space-y-2">
-              {myAwards.map((id) => {
-                const Icon = ACHIEVEMENT_ICONS[id];
-                const nameKey = achievementKey(id);
-                return (
-                  <motion.div
-                    key={id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 1.1 + 0.12 * myAwards.indexOf(id) }}
-                    className={`flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border ${
-                      id === "collector"
-                        ? "bg-warning-accent/15 border-warning-accent/50 shadow-[0_0_25px_rgba(245,158,11,0.15)]"
-                        : "bg-white/5 border-white/10"
-                    }`}
-                  >
-                    <span className="p-2.5 rounded-xl bg-gradient-to-br from-warning-accent to-amber-600 text-black shadow-lg">
-                      <Icon className="w-5 h-5" />
-                    </span>
-                    <span className="min-w-0 text-left">
-                      <span className="block font-display font-black text-sm text-white leading-tight">
-                        {t(nameKey)}
-                      </span>
-                      <span className="block text-[11px] text-text-muted leading-tight">
-                        {t(`${nameKey}Desc`)}
-                      </span>
-                    </span>
-                    <span className="ml-auto flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-warning-accent shrink-0">
-                      <Sparkles className="w-3 h-3" /> {t("achievementUnlocked")}
-                    </span>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ── Keep-going hints — always visible for players ─────────────── */}
-          {showHints && (
-            <div className="pt-1 border-t border-white/10">
-              <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2 mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-secondary-accent" /> {t("keepGoing")}
-              </p>
-              <div className="space-y-2">
-                {myHints.map((h, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-secondary-accent/10 border border-secondary-accent/20 text-left"
-                  >
-                    <span className="shrink-0 w-6 h-6 rounded-full bg-secondary-accent/20 border border-secondary-accent/40 flex items-center justify-center mt-0.5">
-                      <Sparkles className="w-3 h-3 text-secondary-accent" />
-                    </span>
-                    <p className="text-sm font-semibold text-white leading-relaxed">
-                      {t(h.key, h.params)}
-                    </p>
+              <div className="p-3.5 flex-1 min-h-0 overflow-y-auto flex flex-col justify-between gap-2.5">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-[#FFFFFF] border-2 border-[#111111] shadow-[2px_2px_0px_#111111] p-2 min-w-0">
+                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75">⚡ FASTEST BUZZ</div>
+                    <div className="font-['Archivo_Black'] text-sm sm:text-base text-[#111111] truncate">{fastestBuzzText}</div>
                   </div>
-                ))}
-                {myHints.length === 0 && allUnlocked && (
-                  <div className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-warning-accent/10 border border-warning-accent/20 text-left">
-                    <span className="shrink-0 w-6 h-6 rounded-full bg-warning-accent/20 border border-warning-accent/40 flex items-center justify-center mt-0.5">
-                      <Award className="w-3 h-3 text-warning-accent" />
-                    </span>
-                    <p className="text-sm font-semibold text-warning-accent leading-relaxed">
-                      {t("allUnlocked")}
-                    </p>
+                  <div className="bg-[#FFFFFF] border-2 border-[#111111] shadow-[2px_2px_0px_#111111] p-2 min-w-0">
+                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75">🎯 TOUGHEST TILE</div>
+                    <div className="font-['Archivo_Black'] text-sm sm:text-base text-[#111111] truncate">
+                      {matchMemory.hardestQuestion > 0 ? `${matchMemory.hardestQuestion} PTS` : "—"}
+                    </div>
                   </div>
-                )}
+                  <div className="bg-[#FFFFFF] border-2 border-[#111111] shadow-[2px_2px_0px_#111111] p-2 min-w-0">
+                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75">🔄 BIGGEST SWING</div>
+                    <div className="font-['Archivo_Black'] text-sm sm:text-base text-[#111111] truncate">
+                      {matchMemory.biggestSwing > 0 ? `${matchMemory.biggestSwing} PTS` : "0 PTS"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {badgePlaques.map((badge) => (
+                    <div key={badge.key} className="bg-[#FFFFFF] border-2 border-[#111111] p-2.5 flex flex-col justify-between gap-1.5 rounded-none">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-['Archivo_Black'] text-xs text-[#111111] uppercase leading-tight">{badge.title}</span>
+                        <span className={`shrink-0 px-1.5 py-0.5 font-mono text-[9px] font-black border border-[#111111] text-[#111111] ${badge.unlocked ? "bg-[#00C271]" : "bg-[#FFD60A]"}`}>
+                          {badge.unlocked ? "UNLOCKED" : "IN PROGRESS"}
+                        </span>
+                      </div>
+                      <p className="font-mono text-[10px] text-[#111111]/75 leading-snug">{badge.description}</p>
+                      <div
+                        role="progressbar"
+                        aria-label={`${badge.title} progress`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(badge.progress * 100)}
+                        className="w-full h-2 bg-[#E6E0D4] border border-[#111111] overflow-hidden"
+                      >
+                        <div className="h-full bg-[#00C271]" style={{ width: `${badge.progress * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          )}
-        </motion.div>
-      )}
+          </section>
 
-      {/* ── Match Memories: the story of what just happened ────────────────── */}
-      {memories.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.9 }}
-          className="w-full max-w-3xl"
-        >
-          <div className="flex items-center justify-center gap-2 mb-4 text-muted/80">
-            <Sparkles className="w-4 h-4" />
-            <span className="font-display tracking-[0.25em] text-xs uppercase">
-              Match Memories
-            </span>
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {memories.map((m, i) => (
-              <motion.div
-                key={m.label}
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 1 + i * 0.06 }}
-                className="flex flex-col items-center gap-1 rounded-2xl bg-surface border border-border/60 px-3 py-4 text-center hover:border-accent/40 transition-colors"
+          <footer className="bg-[#111111] px-4 sm:px-5 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
+            {onPlayAgain ? (
+              <button
+                type="button"
+                onClick={onPlayAgain}
+                className="w-full sm:flex-1 py-2.5 bg-[#FF3B1D] hover:bg-[#FFD60A] text-[#FFFFFF] hover:text-[#111111] font-['Archivo_Black'] text-xs sm:text-sm tracking-wider border-2 border-[#FFFFFF] shadow-[3px_3px_0px_#FFD60A] uppercase rounded-none"
               >
-                <m.Icon className="w-5 h-5 text-accent mb-1" />
-                <span className="text-lg font-display font-black text-secondary-text leading-none">
-                  {m.value}
-                </span>
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  {m.label}
-                </span>
-                <span className="text-[11px] leading-snug text-muted/70">{m.note}</span>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      )}
+                ↻ PLAY AGAIN (NEW MATCH)
+              </button>
+            ) : (
+              <div className="w-full sm:flex-1 py-2.5 px-4 bg-[#FFD60A] text-[#111111] border-2 border-[#FFFFFF] font-mono text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 rounded-none">
+                ⏳ WAITING FOR HOST TO START A REMATCH...
+              </div>
+            )}
 
-      {/* ── Actions ────────────────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1.1 }}
-        className="flex flex-col sm:flex-row gap-4"
-      >
-        {onPlayAgain && (
-          <button
-            onClick={onPlayAgain}
-            className="flex items-center justify-center gap-3 px-8 py-4 rounded-2xl premium-btn font-display font-black text-lg text-white shadow-[0_0_30px_rgba(99,102,241,0.4)] hover:scale-105 active:scale-95 transition-all"
-          >
-            <RotateCcw className="w-5 h-5" /> {t("playAgain")}
-          </button>
-        )}
-        {!onPlayAgain && waitingNote && (
-          <div className="glass-panel px-6 py-4 rounded-2xl border border-white/10 text-sm font-bold text-text-muted flex items-center gap-3">
-            <span className="w-2 h-2 rounded-full bg-warning-accent animate-pulse" />
-            {waitingNote}
-          </div>
-        )}
-        <button
-          onClick={onExit}
-          className="flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 text-white font-bold text-base transition-all shadow-lg"
-        >
-          <LogOut className="w-5 h-5" /> {exitLabel}
-        </button>
-      </motion.div>
+            <div className="grid grid-cols-4 gap-2 w-full sm:w-auto shrink-0">
+              <button type="button" onClick={handleShare} className="px-3 py-2.5 bg-[#FFFFFF] hover:bg-[#FFD60A] text-[#111111] font-mono text-[11px] font-bold border-2 border-[#FFFFFF] rounded-none flex items-center justify-center gap-1">
+                <Share2 className="w-3.5 h-3.5 shrink-0" /> {copiedShare ? "COPIED!" : "SHARE"}
+              </button>
+              <button type="button" onClick={handleCopyLink} className="px-3 py-2.5 bg-[#FFFFFF] hover:bg-[#FFD60A] text-[#111111] font-mono text-[11px] font-bold border-2 border-[#FFFFFF] rounded-none flex items-center justify-center gap-1">
+                <Copy className="w-3.5 h-3.5 shrink-0" /> COPY LINK
+              </button>
+              <button type="button" onClick={handleDownloadCard} className="px-3 py-2.5 bg-[#00C271] hover:bg-[#FFD60A] text-[#111111] font-mono text-[11px] font-bold border-2 border-[#FFFFFF] rounded-none flex items-center justify-center gap-1">
+                <Download className="w-3.5 h-3.5 shrink-0" /> CARD
+              </button>
+              <button type="button" onClick={onExit} className="px-3 py-2.5 bg-[#FFFFFF] hover:bg-[#FFD60A] text-[#111111] font-mono text-[11px] font-bold border-2 border-[#FFFFFF] rounded-none flex items-center justify-center gap-1">
+                <LogOut className="w-3.5 h-3.5 shrink-0" /> LOBBY
+              </button>
+            </div>
+          </footer>
+        </div>
+      </main>
     </div>
   );
 };

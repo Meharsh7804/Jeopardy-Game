@@ -18,6 +18,7 @@ export interface Settings {
   largeFontMode: boolean;
   animationSpeed: AnimationSpeed;
   language: Lang;
+  questionTimerSeconds: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   largeFontMode: false,
   animationSpeed: "normal",
   language: "en",
+  questionTimerSeconds: 0,
 };
 
 const STORAGE_KEY = "jeopardy_settings";

@@ -87,7 +87,7 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xl"
+        className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 "
         onClick={onClose}
       >
         <motion.div
@@ -95,12 +95,12 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.94, opacity: 0, y: 12 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className="glass-panel-heavy rounded-[2rem] p-7 w-full max-w-md space-y-5 relative border border-white/15 shadow-[0_0_90px_rgba(0,0,0,0.7)]"
+          className="glass-panel-heavy rounded-[2rem] p-7 w-full max-w-md space-y-5 relative border border-[#111111]/15 shadow-[0_0_90px_rgba(0,0,0,0.7)]"
           onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={onClose}
-            className="absolute top-5 right-5 p-2 rounded-full bg-white/10 border border-white/10 text-text-muted hover:text-white hover:bg-white/20 transition-all"
+            className="absolute top-5 right-5 p-2 rounded-full bg-[#E5DEC9] border border-[#111111]/15 text-text-muted hover:text-[#111111] hover:bg-[#E5DEC9] transition-all"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -118,7 +118,7 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
             </div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-text-muted">{def.name}</p>
-              <h3 className="text-2xl font-display font-black text-white leading-tight">{def.abilityName}</h3>
+              <h3 className="text-2xl font-display font-black text-[#111111] leading-tight">{def.abilityName}</h3>
             </div>
           </div>
 
@@ -141,12 +141,12 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
                       className={`flex items-center gap-2.5 p-2.5 rounded-2xl border transition-all text-left ${
                         isSel
                           ? "bg-primary-accent/20 border-primary-accent/60 ring-1 ring-primary-accent/60"
-                          : "bg-white/5 border-white/10 hover:bg-white/10"
+                          : "bg-[#F4EFE6] border-[#111111]/15 hover:bg-[#E5DEC9]"
                       }`}
                     >
                       <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={32} className="shrink-0 rounded-full" />
                       <span className="min-w-0">
-                        <span className="block text-sm font-bold text-white truncate">{p.name}</span>
+                        <span className="block text-sm font-bold text-[#111111] truncate">{p.name}</span>
                         <span className="block text-[10px] font-black text-text-muted">{p.score} pts</span>
                       </span>
                     </button>
@@ -157,20 +157,20 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
           )}
 
           {def.autoTarget && (
-            <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-sm text-text-muted flex items-center gap-2">
+            <div className="p-3 rounded-2xl bg-[#F4EFE6] border border-[#111111]/15 text-sm text-text-muted flex items-center gap-2">
               <Target className="w-4 h-4 text-primary-accent shrink-0" />
               Auto-targets:
-              <span className="font-bold text-white">{autoPlayer?.name ?? "the leader"}</span>
+              <span className="font-bold text-[#111111]">{autoPlayer?.name ?? "the leader"}</span>
             </div>
           )}
 
           {needsRoll && (
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 text-center">
+            <div className="p-4 rounded-2xl bg-[#F4EFE6] border border-[#111111]/15 text-center">
               {rolling ? (
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 0.5, repeat: Infinity, ease: "linear" }}
-                  className="w-14 h-14 rounded-2xl mx-auto bg-white/10 flex items-center justify-center"
+                  className="w-14 h-14 rounded-2xl mx-auto bg-[#E5DEC9] flex items-center justify-center"
                 >
                   <Dices className="w-7 h-7 text-warning-accent" />
                 </motion.div>

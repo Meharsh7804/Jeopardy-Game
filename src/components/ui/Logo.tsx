@@ -59,11 +59,11 @@ export const Logo: React.FC<LogoProps> = ({ size = 40, className = "", withWordm
       </svg>
       {withWordmark && (
         <span className="font-display font-extrabold text-xs tracking-[0.2em] uppercase leading-tight">
-          <span className="text-white">Buzzing</span>{" "}
+          <span className="text-[#111111]">Buzzing</span>{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-accent to-secondary-accent">
             With
           </span>{" "}
-          <span className="text-white">Quizzing</span>
+          <span className="text-[#111111]">Quizzing</span>
         </span>
       )}
     </div>

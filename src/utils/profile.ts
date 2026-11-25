@@ -12,6 +12,7 @@ export interface PlayerProfile {
   totalPoints: number;
   favoriteCategory: string | null;
   achievements: Record<string, number>; // achievement id -> unlock timestamp (ms)
+  elo: number;
 }
 
 export interface MatchRecord {
@@ -50,6 +51,7 @@ const emptyProfile = (): PlayerProfile => ({
   totalPoints: 0,
   favoriteCategory: null,
   achievements: {},
+  elo: 1000,
 });
 
 const persist = (p: PlayerProfile) => {
@@ -466,6 +468,17 @@ export const recordGameEnd = (room: Room, myId: string): PlayerProfile => {
   } catch {
     // storage unavailable — seasons stay in-memory only
   }
+
+  // Simple placement-based ELO (opponents assumed 1000 baseline)
+  const myElo = p.elo ?? 1000;
+  let eloDelta = 0;
+  for (const opp of ranked) {
+    if (opp.id === myId) continue;
+    const expected = 1 / (1 + Math.pow(10, (1000 - myElo) / 400));
+    const actual = (me.score ?? 0) > (opp.score ?? 0) ? 1 : (me.score ?? 0) === (opp.score ?? 0) ? 0.5 : 0;
+    eloDelta += 24 * (actual - expected);
+  }
+  p.elo = Math.max(100, Math.round(myElo + eloDelta));
 
   const { profile: evaluated } = evaluateAchievements(p);
   p.achievements = evaluated.achievements;

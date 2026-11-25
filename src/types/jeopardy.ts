@@ -4,6 +4,8 @@ import type { AbilityKind } from "../abilities/types";
 
 export type QuestionType = "text" | "image" | "audio" | "video" | "both";
 
+export type QuestionDifficulty = "easy" | "medium" | "hard";
+
 export interface Question {
   id: string;
   text: string;
@@ -12,6 +14,8 @@ export interface Question {
   type: QuestionType;
   mediaUrl?: string;
   isDailyDouble?: boolean;
+  difficulty?: QuestionDifficulty;
+  tags?: string[];
 }
 
 export interface Category {
@@ -25,6 +29,7 @@ export interface Quiz {
   id: string;
   title: string;
   description?: string;
+  author?: string;
   categories: Category[];
   createdAt: number;
   password?: string; // optional password to restrict who can edit this quiz
@@ -49,6 +54,7 @@ export interface RoomPlayer {
   score: number;
   joinedAt: number;
   isHost: boolean;
+  isSpectator?: boolean; // read-only viewer, no buzz/score
   connected: boolean; // live presence — false while the client is disconnected, but the player stays in the room
   lastSeen: number; // server-resolved timestamp of last connect/disconnect transition
   buzzCount?: number; // total buzz-ins this game
@@ -107,9 +113,14 @@ export interface ActiveQuestion {
   type: QuestionType;
   mediaUrl?: string;
   isDailyDouble?: boolean;
+  dailyDoublePlayerId?: string; // when DD, only this player answers
+  wager?: number; // DD wager; when set, scoring uses this instead of value
   revealAnswer: boolean;
   openedAt?: number; // server-resolved timestamp of when buzzing opened — reaction time = buzz - openedAt
   audioPlaying?: boolean; // master host audio state: true = playing, false = paused
+  timerDuration?: number; // optional per-question countdown in seconds (0/undefined = off)
+  paused?: boolean; // host paused the question timer/buzzing
+  pauseRemaining?: number; // seconds remaining when paused
 }
 
 export interface RoomReaction {

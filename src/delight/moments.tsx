@@ -69,13 +69,13 @@ export const MomentToast: React.FC = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.9 }}
               transition={{ type: "spring", stiffness: 400, damping: 22 }}
-              className={`relative flex items-center gap-3 pl-4 pr-6 py-3 rounded-2xl glass-panel-heavy border-2 ${tc.ring} ${tc.glow} bg-black/75 backdrop-blur-xl overflow-hidden`}
+              className={`relative flex items-center gap-3 pl-4 pr-6 py-3 rounded-2xl glass-panel-heavy border-2 ${tc.ring} ${tc.glow} bg-black/75  overflow-hidden`}
             >
               <span className={`w-11 h-11 rounded-xl flex items-center justify-center ${tc.chip} text-2xl`}>
                 {m.icon}
               </span>
               <span className="text-left">
-                <span className="block font-display font-black text-lg leading-tight text-white">{m.title}</span>
+                <span className="block font-display font-black text-lg leading-tight text-[#111111]">{m.title}</span>
                 {m.subtitle && <span className="block text-xs text-text-muted leading-tight">{m.subtitle}</span>}
               </span>
             </motion.div>

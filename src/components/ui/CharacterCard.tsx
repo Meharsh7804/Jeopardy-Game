@@ -23,13 +23,13 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
 
   if (!avatar || !def) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-5 flex flex-col justify-center gap-3 min-h-[12rem]">
+      <div className="rounded-2xl border border-[#111111]/15 bg-[#F4EFE6] p-5 flex flex-col justify-center gap-3 min-h-[12rem]">
         <div className="flex items-center gap-3">
-          <span className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+          <span className="w-12 h-12 rounded-full bg-[#F4EFE6] border border-[#111111]/15 flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-text-muted/40" />
           </span>
           <div className="space-y-1">
-            <p className="text-sm font-display font-bold text-white/80">
+            <p className="text-sm font-display font-bold text-[#111111]/80">
               No character selected
             </p>
             <p className="text-[11px] text-text-muted/70 font-medium leading-relaxed">
@@ -63,7 +63,7 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
           style={{ objectPosition: avatar.position }}
         />
         <div className="min-w-0 flex-1">
-          <p className="font-display font-black text-white leading-tight">
+          <p className="font-display font-black text-[#111111] leading-tight">
             {def.name}
           </p>
           <p className="text-[11px] font-bold text-secondary-accent uppercase tracking-widest leading-snug">
@@ -83,16 +83,16 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
           <p className="text-xs text-text-muted italic leading-relaxed">
             {def.tagline}
           </p>
-          <div className="h-px bg-white/10" />
+          <div className="h-px bg-[#E5DEC9]" />
           <div className="space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-secondary-accent">
               Ability details
             </p>
-            <p className="text-xs text-white/90 leading-relaxed">
+            <p className="text-xs text-[#111111]/90 leading-relaxed">
               {def.longDesc}
             </p>
           </div>
-          <div className="h-px bg-white/10" />
+          <div className="h-px bg-[#E5DEC9]" />
           <div className="flex items-start gap-2">
             <Sparkles className="text-warning-accent w-3.5 h-3.5 shrink-0 mt-0.5" />
             <p className="text-xs text-text-muted leading-relaxed">

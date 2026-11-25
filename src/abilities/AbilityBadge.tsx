@@ -21,10 +21,10 @@ export const AbilityBadge: React.FC<{
       title={used ? `${ability.abilityName} (used)` : ready ? `${ability.abilityName} — ${SKILL}` : `${ability.abilityName} — locked`}
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${
         used
-          ? "bg-white/5 border-white/10 text-text-muted"
+          ? "bg-[#F4EFE6] border-[#111111]/15 text-text-muted"
           : ready
             ? "bg-warning-accent/15 border-warning-accent/40 text-warning-accent"
-            : "bg-black/30 border-white/5 text-text-muted/60"
+            : "bg-[#F4EFE6] border-[#111111]/10 text-text-muted/60"
       } ${className}`}
     >
       <span className="text-[10px] leading-none">{ability.emoji}</span>

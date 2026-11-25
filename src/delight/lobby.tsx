@@ -26,14 +26,10 @@ export const lobbyVibe = (count: number, isHost: boolean): string => {
  * cosmetic — no gameplay effect.
  */
 export const LobbyCurrent: React.FC<{ className?: string }> = ({ className = "" }) => (
-  <div className={`relative h-[3px] w-full overflow-hidden rounded-full bg-white/5 ${className}`}>
+  <div className={`relative h-1.5 w-full overflow-hidden border-2 border-[#111111] bg-[#F4EFE6] ${className}`}>
     <motion.div
-      className="absolute inset-y-0 w-1/3 rounded-full"
-      style={{
-        background:
-          "linear-gradient(90deg, transparent, rgba(99,102,241,0.9), rgba(139,92,246,0.9), transparent)",
-      }}
-      animate={{ x: ["-120%", "320%"] }}
+      className="absolute inset-y-0 w-1/4 bg-[#FFD60A] border-r-2 border-[#111111]"
+      animate={{ x: ["-120%", "420%"] }}
       transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
     />
   </div>

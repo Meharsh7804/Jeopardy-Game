@@ -58,6 +58,7 @@ import {
   activeModiShareFor,
 } from "../abilities/engine";
 import { abilityNoticeBus } from "../abilities/internal";
+import { toast } from "../utils/toast";
 
 // ─── session persistence ─────────────────────────────────────────────────────
 
@@ -207,12 +208,21 @@ interface RoomContextProps {
   // host actions
   createRoom: (quiz: Quiz, hostName: string, avatar?: string) => Promise<string>;
   startGame: () => Promise<void>;
-  openQuestion: (question: Question, categoryName: string) => Promise<void>;
+  openQuestion: (
+    question: Question,
+    categoryName: string,
+    timerSeconds?: number,
+    opts?: { dailyDoublePlayerId?: string; wager?: number },
+  ) => Promise<void>;
   setAudioPlaying: (playing: boolean) => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
   splitPoints: (playerIds: string[]) => Promise<void>;
   adjustScore: (playerId: string, delta: number, reason: string) => Promise<void>;
   undoLastScoreChange: () => Promise<void>;
+  redoLastScoreChange: () => Promise<void>;
+  canRedo: boolean;
+  pauseQuestion: () => Promise<void>;
+  resumeQuestion: () => Promise<void>;
   revealAnswer: (answerText: string) => Promise<void>;
   closeQuestion: () => Promise<void>;
   endGame: () => Promise<void>;
@@ -220,7 +230,7 @@ interface RoomContextProps {
   kickPlayer: (playerId: string) => Promise<void>;
 
   // player actions
-  joinRoom: (code: string, playerName: string, avatar?: string) => Promise<void>;
+  joinRoom: (code: string, playerName: string, avatar?: string, opts?: { spectator?: boolean }) => Promise<void>;
   buzz: () => Promise<"ok" | "muted">;
   sendReaction: (emoji: string) => Promise<void>;
 
@@ -266,6 +276,14 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({
   const sessionToRestore = useRef(loadSession());
   const [hydrated, setHydrated] = useState(() => sessionToRestore.current === null);
   const listenerRef = useRef<(() => void) | null>(null);
+  const redoStackRef = useRef<ScoreHistoryEntry[]>([]);
+  const [canRedo, setCanRedo] = useState(false);
+
+  // A redo stack belongs to one room's audit trail — never carry it across rooms.
+  useEffect(() => {
+    redoStackRef.current = [];
+    setCanRedo(false);
+  }, [roomCode]);
 
   const isHost = room ? room.hostId === myId : false;
 
@@ -447,6 +465,7 @@ const code = genId(6);
         return code;
       } catch (e: any) {
         setError(e.message);
+        toast.error("Couldn't create room", e?.message);
         throw e;
       } finally {
         setLoading(false);
@@ -488,7 +507,12 @@ const code = genId(6);
   // This guarantees all clients transition simultaneously (server-authoritative)
   // and there are no stale buzzes from a prior question.
   const openQuestion = useCallback(
-    async (question: Question, categoryName: string) => {
+    async (
+      question: Question,
+      categoryName: string,
+      timerSeconds?: number,
+      opts?: { dailyDoublePlayerId?: string; wager?: number },
+    ) => {
       if (!roomCode) return;
       const aq: Partial<ActiveQuestion> = {
         questionId: question.id,
@@ -498,6 +522,7 @@ const code = genId(6);
         type: question.type,
         revealAnswer: false,
         audioPlaying: true,
+        ...(timerSeconds && timerSeconds > 0 ? { timerDuration: timerSeconds } : {}),
         // Server-clock start time so reaction times are comparable to the
         // server-stamped buzz timestamps, regardless of any device clock.
         // (Stored as the Firebase sentinel; resolves to an epoch-ms number.)
@@ -507,6 +532,8 @@ const code = genId(6);
       // object URLs from an old upload method — they can never load on players' devices.
       if (question.mediaUrl && !question.mediaUrl.startsWith("blob:")) aq.mediaUrl = question.mediaUrl;
       if (question.isDailyDouble) aq.isDailyDouble = question.isDailyDouble;
+      if (opts?.dailyDoublePlayerId) aq.dailyDoublePlayerId = opts.dailyDoublePlayerId;
+      if (typeof opts?.wager === "number") aq.wager = opts.wager;
       // Optimistic local update: the host must see the question the instant it
       // is opened, not wait for the Firebase round-trip. We flip the local room
       // state immediately; the server echo arrives a moment later with the real
@@ -515,12 +542,13 @@ const code = genId(6);
       // in sync — but the host is never left staring at the board.
       const optimistic = { ...aq, openedAt: 0 } as ActiveQuestion;
       const nextJail = room?.jailNext ?? [];
+      const ddBuzz = opts?.dailyDoublePlayerId ? { [opts.dailyDoublePlayerId]: Date.now() } : {};
       setRoom((prev) =>
         prev
           ? {
               ...prev,
               activeQuestion: optimistic,
-              buzzes: {},
+              buzzes: ddBuzz,
               reactions: {},
               phase: "buzzing" as RoomPhase,
               jail: nextJail.length > 0 ? nextJail : undefined,
@@ -556,7 +584,7 @@ const code = genId(6);
       };
       await update(ref(db, `rooms/${roomCode}`), {
         activeQuestion: aq,
-        buzzes: null as any,
+        buzzes: opts?.dailyDoublePlayerId ? { [opts.dailyDoublePlayerId]: serverTimestamp() } : (null as any),
         reactions: null as any,
         phase: "buzzing" as RoomPhase,
         ...abilityUpdates,
@@ -594,6 +622,8 @@ const code = genId(6);
   const judgeAnswer = useCallback(
     async (correct: boolean) => {
       if (!roomCode || !room) return;
+      redoStackRef.current = [];
+      setCanRedo(false);
 
       // Server-authoritative buzz priority — a frontOfLine effect forces the
       // owner to #1 no matter when they slammed the button. Once it gets the
@@ -603,7 +633,7 @@ const code = genId(6);
       if (!buzzPlayerId) return;
       const spentFrontOfLine = ranked[0]?.override ? [buzzPlayerId] : [];
 
-      const value = room.activeQuestion?.value ?? 0;
+      const value = room.activeQuestion?.wager ?? room.activeQuestion?.value ?? 0;
       const qId = room.activeQuestion?.questionId;
       const effects = room.abilityEffects || {};
       const players = room.players;
@@ -778,7 +808,9 @@ const code = genId(6);
   const splitPoints = useCallback(
     async (playerIds: string[]) => {
       if (!roomCode || !room || playerIds.length === 0) return;
-      const value = room.activeQuestion?.value ?? 0;
+      redoStackRef.current = [];
+      setCanRedo(false);
+      const value = room.activeQuestion?.wager ?? room.activeQuestion?.value ?? 0;
       const share = Math.round(value / playerIds.length);
 
       const updates: Record<string, any> = {};
@@ -814,6 +846,8 @@ const code = genId(6);
   const adjustScore = useCallback(
     async (playerId: string, delta: number, reason: string) => {
       if (!roomCode || !room || delta === 0) return;
+      redoStackRef.current = [];
+      setCanRedo(false);
       const currentScore = room.players[playerId]?.score ?? 0;
       const playerName = room.players[playerId]?.name ?? "Player";
       const { entry, newScore } = buildScoreChange(
@@ -843,17 +877,59 @@ const code = genId(6);
     const last = entries[0];
     if (!last || !last.teamId) return;
 
-    // Guard against undoing a change that's no longer the latest true state
-    // (e.g. more score changes for that player happened after logging, out
-    // of order due to network timing) by reverting relative to the entry's
-    // own recorded delta rather than blindly setting previousScore.
     const currentScore = room.players[last.teamId]?.score ?? 0;
     const revertedScore = currentScore - last.changeAmount;
 
+    redoStackRef.current.push({ ...last });
+    setCanRedo(true);
     await update(ref(db, `rooms/${roomCode}`), {
       [`players/${last.teamId}/score`]: revertedScore,
       [`scoreHistory/${last.id}`]: null,
     });
+  }, [roomCode, room]);
+
+  const redoLastScoreChange = useCallback(async () => {
+    if (!roomCode || !room) return;
+    const last = redoStackRef.current.pop();
+    setCanRedo(redoStackRef.current.length > 0);
+    if (!last || !last.teamId) return;
+    const currentScore = room.players[last.teamId]?.score ?? 0;
+    const { entry, newScore } = buildScoreChange(
+      last.teamId,
+      currentScore,
+      last.changeAmount,
+      `${last.description} (redo)`,
+      last.questionId,
+    );
+    await update(ref(db, `rooms/${roomCode}`), {
+      [`players/${last.teamId}/score`]: newScore,
+      [`scoreHistory/${entry.id}`]: entry,
+    });
+  }, [roomCode, room]);
+
+  const pauseQuestion = useCallback(async () => {
+    if (!roomCode || !room?.activeQuestion || room.activeQuestion.paused) return;
+    const aq = room.activeQuestion;
+    let remaining = aq.pauseRemaining;
+    if (aq.timerDuration && aq.openedAt) {
+      const elapsed = (Date.now() - aq.openedAt) / 1000;
+      remaining = Math.max(0, aq.timerDuration - elapsed);
+    }
+    await update(ref(db, `rooms/${roomCode}/activeQuestion`), {
+      paused: true,
+      pauseRemaining: remaining ?? null,
+    });
+  }, [roomCode, room]);
+
+  const resumeQuestion = useCallback(async () => {
+    if (!roomCode || !room?.activeQuestion || !room.activeQuestion.paused) return;
+    const aq = room.activeQuestion;
+    const patch: Record<string, any> = { paused: false, pauseRemaining: null };
+    if (typeof aq.pauseRemaining === "number") {
+      patch.timerDuration = aq.pauseRemaining;
+      patch.openedAt = serverTimestamp();
+    }
+    await update(ref(db, `rooms/${roomCode}/activeQuestion`), patch);
   }, [roomCode, room]);
 
   // ── Host: reveal the answer text ─────────────────────────────────────────
@@ -891,7 +967,10 @@ const code = genId(6);
             activeQuestion: null,
             buzzes: {},
             reactions: {},
-            [`completedQuestions/${qId}`]: true,
+            completedQuestions: {
+              ...(prev?.completedQuestions || {}),
+              [qId]: true,
+            },
           }
         : prev,
     );
@@ -916,6 +995,8 @@ const code = genId(6);
   // the board ready for a fresh game.
   const resetGame = useCallback(async () => {
     if (!roomCode || !room || room.hostId !== myId) return;
+    redoStackRef.current = [];
+    setCanRedo(false);
     const updates: Record<string, any> = {
       phase: "board" as RoomPhase,
       activeQuestion: null,
@@ -966,7 +1047,7 @@ const code = genId(6);
   // any existing `buzzes/{myId}` entry untouched so a mid-"buzzing"-phase
   // refresh silently preserves (rather than erases) their queue position.
   const joinRoom = useCallback(
-    async (code: string, playerName: string, avatar?: string) => {
+    async (code: string, playerName: string, avatar?: string, opts?: { spectator?: boolean }) => {
       setLoading(true);
       setError(null);
       const upperCode = code.toUpperCase().trim();
@@ -982,7 +1063,7 @@ const existingRoom = snap.val() as Room;
 
         // Atomic avatar-uniqueness: one player per character in a room, enforced
         // server-side via a transaction. Rejoining your own avatar is a no-op.
-        if (resolvedAvatar !== existingPlayer?.avatar) {
+        if (!opts?.spectator && resolvedAvatar !== existingPlayer?.avatar) {
           const avatarRef = ref(db, `rooms/${upperCode}/avatarOwners/${fbAvatarKey(resolvedAvatar)}`);
           const claim = await runTransaction(avatarRef, (cur) => {
             if (cur && cur !== myId) return undefined; // taken → abort
@@ -1008,6 +1089,7 @@ const existingRoom = snap.val() as Room;
           // "who has been here longest" stay stable across refreshes.
           joinedAt: existingPlayer?.joinedAt ?? Date.now(),
           isHost: false,
+          isSpectator: opts?.spectator ?? existingPlayer?.isSpectator ?? false,
           connected: true,
           lastSeen: Date.now(),
           buzzCount: existingPlayer?.buzzCount ?? 0,
@@ -1050,6 +1132,7 @@ const existingRoom = snap.val() as Room;
         saveSession(upperCode, false);
       } catch (e: any) {
         setError(e.message);
+        toast.error("Couldn't join room", e?.message);
         throw e;
       } finally {
         setLoading(false);
@@ -1091,8 +1174,12 @@ const existingRoom = snap.val() as Room;
     if (!roomCode || !room) return "muted";
     // Only allowed when phase is 'buzzing'
     if (room.phase !== "buzzing") return "muted";
+    if (room.activeQuestion?.paused) return "muted";
+    if (room.players?.[myId]?.isSpectator) return "muted";
     // Ignore duplicate buzz from this client
     if (room.buzzes?.[myId]) return "muted";
+    // Daily Double: only the assigned player may answer
+    if (room.activeQuestion?.dailyDoublePlayerId && room.activeQuestion.dailyDoublePlayerId !== myId) return "muted";
 
     // Ability gates: silenced players and everyone outside a window lock are
     // blocked server-side by refusing to write the buzz.
@@ -1497,6 +1584,10 @@ const existingRoom = snap.val() as Room;
         splitPoints,
         adjustScore,
         undoLastScoreChange,
+        redoLastScoreChange,
+        canRedo,
+        pauseQuestion,
+        resumeQuestion,
         revealAnswer,
         closeQuestion,
         endGame,

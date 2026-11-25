@@ -101,10 +101,10 @@ export const AbilityOverlay: React.FC = () => {
                   transition={{ delay: 0.12, type: "spring", stiffness: 300, damping: 24 }}
                   className="mt-4 flex flex-col items-center gap-1"
                 >
-                  <span className="text-xs font-black uppercase tracking-[0.3em] text-white/70">
+                  <span className="text-xs font-black uppercase tracking-[0.3em] text-[#111111]/70">
                     {it.name} activates
                   </span>
-                  <span className="font-display font-black text-3xl text-white text-center drop-shadow-lg px-4">
+                  <span className="font-display font-black text-3xl text-[#111111] text-center drop-shadow-lg px-4">
                     {def?.abilityName}
                   </span>
                 </motion.div>

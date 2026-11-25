@@ -54,7 +54,7 @@ export const AchievementToast: React.FC = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -30, scale: 0.85 }}
               transition={{ type: "spring", stiffness: 380, damping: 20 }}
-              className="relative flex items-center gap-4 pl-4 pr-8 py-4 rounded-2xl glass-panel-heavy border-2 border-warning-accent/60 bg-black/80 shadow-[0_0_50px_rgba(245,158,11,0.5)] backdrop-blur-xl overflow-hidden"
+              className="relative flex items-center gap-4 pl-4 pr-8 py-4 rounded-2xl glass-panel-heavy border-2 border-warning-accent/60 bg-[#111111]/60 shadow-[0_0_50px_rgba(245,158,11,0.5)]  overflow-hidden"
             >
               {/* golden sweep */}
               <motion.span
@@ -73,7 +73,7 @@ export const AchievementToast: React.FC = () => {
                 <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-warning-accent">
                   <Award className="w-3.5 h-3.5" /> {t("achievementUnlocked")}
                 </span>
-                <span className="block font-display font-black text-xl text-white leading-tight mt-0.5">
+                <span className="block font-display font-black text-xl text-[#111111] leading-tight mt-0.5">
                   {t(nameKey)}
                 </span>
                 <span className="block text-xs text-text-muted leading-tight mt-0.5">

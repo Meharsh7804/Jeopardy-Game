@@ -271,7 +271,7 @@ export const HeroQuizArena: React.FC = () => {
                     }
               }
               transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-white/10 text-[9px] font-black tracking-[0.22em] text-text-muted uppercase shadow-lg"
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-[#111111]/15 text-[9px] font-black tracking-[0.22em] text-text-muted uppercase shadow-lg"
             >
               <motion.span
                 animate={reduce ? { opacity: 1 } : { opacity: [0.5, 1, 0.5] }}
@@ -287,7 +287,7 @@ export const HeroQuizArena: React.FC = () => {
           </div>
 
           <div
-            className="relative w-full glass-panel-heavy rounded-3xl border border-white/10 overflow-hidden"
+            className="relative w-full glass-panel-heavy rounded-3xl border border-[#111111]/15 overflow-hidden"
             style={{
               boxShadow:
                 "0 30px 60px -20px rgba(0,0,0,0.7), 0 12px 40px -12px rgba(99,102,241,0.25)",
@@ -307,12 +307,12 @@ export const HeroQuizArena: React.FC = () => {
                   }}
                   className="w-2 h-2 rounded-full bg-rose-500"
                 />
-                <span className="text-[10px] font-black tracking-[0.25em] text-white uppercase">
+                <span className="text-[10px] font-black tracking-[0.25em] text-[#111111] uppercase">
                   {t("liveGame")}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-[9px] font-black tracking-widest text-text-muted uppercase">
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4EFE6] border border-[#111111]/15 text-[9px] font-black tracking-widest text-text-muted uppercase">
                   {t("round")} 2/5
                   <span className="flex items-center gap-[3px]">
                     {[0, 1, 2, 3, 4].map((i) => (
@@ -323,7 +323,7 @@ export const HeroQuizArena: React.FC = () => {
                     ))}
                   </span>
                 </span>
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/40 border border-white/10 text-[11px] font-mono font-bold text-white tabular-nums">
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4EFE6] border border-[#111111]/15 text-[11px] font-mono font-bold text-[#111111] tabular-nums">
                   <TimerIcon className="w-3 h-3 text-primary-accent" />
                   0:15
                 </span>
@@ -331,7 +331,7 @@ export const HeroQuizArena: React.FC = () => {
             </div>
 
             {/* Round timer — drains once per round, synchronized with the master timeline */}
-            <div className="h-[3px] bg-black/40">
+            <div className="h-[3px] bg-[#F4EFE6]">
               <motion.div
                 key={cycle}
                 initial={{ scaleX: 1 }}
@@ -361,8 +361,8 @@ export const HeroQuizArena: React.FC = () => {
                     transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
                     className="w-full flex items-center gap-3 min-w-0"
                   >
-                    <span className="shrink-0 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 flex items-center gap-1.5">
-                      <span className="text-[9px] font-black tracking-widest text-white uppercase">
+                    <span className="shrink-0 px-2.5 py-1 rounded-lg bg-[#F4EFE6] border border-[#111111]/15 flex items-center gap-1.5">
+                      <span className="text-[9px] font-black tracking-widest text-[#111111] uppercase">
                         {cats[pick.col]}
                       </span>
                       <span className="text-[10px] font-black text-warning-accent">
@@ -397,10 +397,10 @@ export const HeroQuizArena: React.FC = () => {
                   <span className="px-2.5 py-1 rounded-lg bg-primary-accent/15 border border-primary-accent/40 text-[9px] font-black tracking-[0.2em] text-primary-accent uppercase">
                     {cats[pick.col]}
                   </span>
-                  <p className="font-display font-bold text-lg text-white leading-snug max-w-[85%]">
+                  <p className="font-display font-bold text-lg text-[#111111] leading-snug max-w-[85%]">
                     {t("demoQuestion")}
                   </p>
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/40 border border-white/10 text-[11px] font-mono font-bold text-white tabular-nums">
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4EFE6] border border-[#111111]/15 text-[11px] font-mono font-bold text-[#111111] tabular-nums">
                     <TimerIcon className="w-3 h-3 text-warning-accent" />
                     00:07
                   </span>
@@ -420,7 +420,7 @@ export const HeroQuizArena: React.FC = () => {
                   <div className="px-4 pb-3 grid grid-cols-3 gap-1.5">
                     {cats.map((c, col) => (
                       <div key={c} className="flex flex-col gap-1.5">
-                        <div className="rounded-lg bg-white/5 border border-white/10 py-1.5 px-1 text-center text-[9px] font-black tracking-[0.18em] text-white uppercase leading-none flex items-center justify-center min-h-[28px]">
+                        <div className="rounded-lg bg-[#F4EFE6] border border-[#111111]/15 py-1.5 px-1 text-center text-[9px] font-black tracking-[0.18em] text-[#111111] uppercase leading-none flex items-center justify-center min-h-[28px]">
                           {c}
                         </div>
                         {VALUES.map((v, row) => {
@@ -507,7 +507,7 @@ export const HeroQuizArena: React.FC = () => {
                     className={`relative flex items-center gap-2.5 rounded-2xl border p-2.5 transition-all duration-700 ease-out ${
                       reacts
                         ? "-translate-y-0.5 bg-warning-accent/10 border-warning-accent/50 shadow-[0_0_18px_rgba(245,158,11,0.2),0_0_32px_rgba(139,92,246,0.18)]"
-                        : "bg-white/5 border-white/10"
+                        : "bg-[#F4EFE6] border-[#111111]/15"
                     }`}
                   >
                     {/* Crown follows the leader; pops when the lead changes */}
@@ -548,7 +548,7 @@ export const HeroQuizArena: React.FC = () => {
                       <p className="text-[9px] font-black tracking-widest text-text-muted uppercase truncate">
                         {name}
                       </p>
-                      <p className="font-display font-black text-lg text-white leading-none tabular-nums">
+                      <p className="font-display font-black text-lg text-[#111111] leading-none tabular-nums">
                         {score}
                       </p>
                       <p className="flex items-center gap-1 mt-0.5 text-[7px] font-black tracking-widest uppercase">
@@ -646,7 +646,7 @@ export const HeroQuizArena: React.FC = () => {
                     }
               }
               transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-white/10 text-[9px] font-black tracking-[0.22em] text-text-muted uppercase shadow-lg"
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-[#111111]/15 text-[9px] font-black tracking-[0.22em] text-text-muted uppercase shadow-lg"
             >
               <Zap className="w-2.5 h-2.5 text-primary-accent" />
               {t("gamesLiveCount", { n: 12 })}
@@ -668,7 +668,7 @@ export const HeroQuizArena: React.FC = () => {
                 transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
                 className="absolute -top-3 -right-1 md:-right-8 z-20 hidden sm:block"
               >
-                <div className="glass-panel-heavy rounded-2xl px-3.5 py-2.5 border border-white/15 flex items-center gap-2.5 shadow-xl">
+                <div className="glass-panel-heavy rounded-2xl px-3.5 py-2.5 border border-[#111111]/15 flex items-center gap-2.5 shadow-xl">
                   <span className="w-1.5 h-1.5 rounded-full bg-warning-accent" />
                   <div className="leading-none">
                     <p className="text-[8px] font-black tracking-[0.2em] text-text-muted uppercase">

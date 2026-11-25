@@ -11,6 +11,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { ref, onValue, set, remove } from 'firebase/database';
 import { db, isFirebaseConfigValid } from '../firebase';
+import { toast } from '../utils/toast';
 import type { Quiz, GameSettings } from '../types/jeopardy';
 import { DEFAULT_QUIZ } from '../utils/defaultQuiz';
 
@@ -159,6 +160,7 @@ export const QuizLibraryProvider: React.FC<{ children: React.ReactNode }> = ({ c
     // (e.g. a data URL too large for the database) instead of failing silently.
     return set(ref(db, `quizLibrary/${quiz.id}`), sanitize(quiz)).catch((err) => {
       console.error("Failed to save quiz to Firebase:", err);
+      toast.error("Couldn't save quiz", err?.message || "Please check your connection and try again.");
       throw err;
     });
   }, []);

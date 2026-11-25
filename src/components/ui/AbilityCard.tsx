@@ -87,8 +87,8 @@ export const AbilityCard: React.FC<AbilityCardProps> = ({
           : active
             ? "border-success-accent/40 bg-gradient-to-br from-success-accent/10 via-black/25 to-black/30"
             : used
-              ? "border-white/10 bg-black/25"
-              : "border-white/10 bg-black/30 grayscale-[35%]"
+              ? "border-[#111111]/15 bg-black/25"
+              : "border-[#111111]/15 bg-[#F4EFE6] grayscale-[35%]"
       }`}
     >
       {/* Soft ambient glow, only present while ready or active */}
@@ -196,7 +196,7 @@ export const AbilityCard: React.FC<AbilityCardProps> = ({
           >
             {def.emoji} {def.abilityName}
           </p>
-          <p className="text-sm sm:text-base font-display font-black text-white truncate">
+          <p className="text-sm sm:text-base font-display font-black text-[#111111] truncate">
             {def.name}
           </p>
 
@@ -251,7 +251,7 @@ export const AbilityCard: React.FC<AbilityCardProps> = ({
           {/* Progress bar while locked (growable toward 2 correct) */}
           {!ready && !used && (
             <div className="mt-2 flex items-center gap-2">
-              <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="flex-1 h-1.5 rounded-full bg-[#E5DEC9] overflow-hidden">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-warning-accent to-secondary-accent"
                   initial={false}
@@ -274,7 +274,7 @@ export const AbilityCard: React.FC<AbilityCardProps> = ({
           className={`shrink-0 rounded-xl border p-2 transition-all ${
             ready
               ? "bg-warning-accent/20 border-warning-accent/50 text-warning-accent hover:bg-warning-accent/30 hover:scale-110 shadow-[0_0_14px_rgba(245,158,11,0.35)]"
-              : "bg-white/5 border-white/10 text-text-muted/40"
+              : "bg-[#F4EFE6] border-[#111111]/15 text-text-muted/40"
           }`}
         >
           {ready ? <Zap className="w-4 h-4 animate-pulse" /> : <Lock className="w-4 h-4" />}

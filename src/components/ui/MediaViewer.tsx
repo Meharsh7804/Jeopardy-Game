@@ -47,7 +47,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   if (isAudio) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full h-full flex items-center justify-center bg-[#111111]/45 p-4">
         <audio
           ref={mediaRef as any}
           src={url}

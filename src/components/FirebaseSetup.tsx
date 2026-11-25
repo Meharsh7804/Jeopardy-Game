@@ -75,7 +75,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden bg-primary-bg">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden bg-transparent">
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary-accent/5 rounded-full blur-3xl" />
@@ -97,7 +97,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
           {/* Instructions */}
           <div className="md:col-span-5 glass-panel p-5 rounded-2xl space-y-4 text-xs">
-            <h2 className="font-bold text-sm text-text-main flex items-center gap-1.5 border-b border-white/5 pb-2">
+            <h2 className="font-bold text-sm text-text-main flex items-center gap-1.5 border-b border-[#111111]/10 pb-2">
               <HelpCircle className="w-4 h-4 text-secondary-accent" />
               Setup Steps
             </h2>
@@ -113,7 +113,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
               </li>
               <li>
                 In the Database <strong>Rules</strong> tab, set rules to allow read/write:
-                <pre className="mt-1 p-2 rounded bg-black/40 text-[10px] font-mono border border-white/5 text-secondary-accent">
+                <pre className="mt-1 p-2 rounded bg-[#F4EFE6] text-[10px] font-mono border border-[#111111]/10 text-secondary-accent">
                   {`{\n  "rules": {\n    ".read": true,\n    ".write": true\n  }\n}`}
                 </pre>
               </li>
@@ -131,12 +131,12 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
                   value={pasteArea}
                   onChange={(e) => setPasteArea(e.target.value)}
                   rows={2}
-                  className="flex-1 bg-primary-bg border border-white/10 rounded-xl px-3 py-2 text-xs text-text-main outline-none focus:border-primary-accent resize-none placeholder-text-muted/30"
+                  className="flex-1 bg-primary-bg border border-[#111111]/15 rounded-xl px-3 py-2 text-xs text-text-main outline-none focus:border-primary-accent resize-none placeholder-text-muted/30"
                 />
                 <button
                   type="button"
                   onClick={handlePasteConfig}
-                  className="px-3 py-2 rounded-xl bg-card-bg border border-white/5 text-[10px] font-bold text-text-muted hover:text-text-main transition flex flex-col items-center justify-center shrink-0"
+                  className="px-3 py-2 rounded-xl bg-card-bg border border-[#111111]/10 text-[10px] font-bold text-text-muted hover:text-text-main transition flex flex-col items-center justify-center shrink-0"
                 >
                   <RefreshCw className="w-3.5 h-3.5 mb-1" />
                   Parse
@@ -145,7 +145,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
             </div>
 
             <div className="relative flex items-center justify-center">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5"></div></div>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#111111]/10"></div></div>
               <span className="relative px-3 bg-card-bg text-[10px] text-text-muted uppercase font-bold tracking-wider">Or Fill Manually</span>
             </div>
 
@@ -158,7 +158,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
                     placeholder="my-jeopardy-app"
                     value={projectId}
                     onChange={(e) => setProjectId(e.target.value)}
-                    className="w-full bg-primary-bg border border-white/10 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
+                    className="w-full bg-primary-bg border border-[#111111]/15 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
                   />
                 </div>
                 <div className="space-y-1">
@@ -168,7 +168,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
                     placeholder="1:123:web:abc"
                     value={appId}
                     onChange={(e) => setAppId(e.target.value)}
-                    className="w-full bg-primary-bg border border-white/10 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
+                    className="w-full bg-primary-bg border border-[#111111]/15 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
                   />
                 </div>
               </div>
@@ -180,7 +180,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
                   placeholder="AIzaSy..."
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  className="w-full bg-primary-bg border border-white/10 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
+                  className="w-full bg-primary-bg border border-[#111111]/15 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
                 />
               </div>
 
@@ -191,7 +191,7 @@ export const FirebaseSetup: React.FC<FirebaseSetupProps> = ({ onConfigured }) =>
                   placeholder="https://your-db-rdb.firebaseio.com"
                   value={databaseURL}
                   onChange={(e) => setDatabaseURL(e.target.value)}
-                  className="w-full bg-primary-bg border border-white/10 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
+                  className="w-full bg-primary-bg border border-[#111111]/15 rounded-xl px-3 py-2.5 text-xs text-text-main outline-none focus:border-primary-accent"
                 />
               </div>
 

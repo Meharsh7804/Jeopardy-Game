@@ -60,7 +60,7 @@ export const ReactionGauge: React.FC<ReactionGaugeProps> = ({
         className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-colors duration-300 ${
           inBonus
             ? "border-warning-accent/50 bg-warning-accent/10 text-warning-accent shadow-[0_0_18px_rgba(245,158,11,0.25)]"
-            : "border-white/10 bg-white/5 text-primary-accent"
+            : "border-[#111111]/15 bg-[#F4EFE6] text-primary-accent"
         }`}
       >
         <AnimatePresence mode="wait">
