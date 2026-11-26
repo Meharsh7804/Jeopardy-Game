@@ -35,7 +35,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
             {/* HEADER */}
             <div className="bg-[#111111] text-[#FFFFFF] px-5 py-3.5 flex items-center justify-between border-b-2 border-[#111111]">
               <div style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-base sm:text-lg tracking-wide uppercase">
-                ⚙ Studio Calibration // Settings
+                 Studio Calibration // Settings
               </div>
               <button
                 type="button"
@@ -205,7 +205,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
                 className="px-5 py-2 bg-[#111111] text-[#FFFFFF] hover:bg-[#FFD60A] hover:text-[#111111] border-2 border-[#111111] font-bold text-xs tracking-wider uppercase transition-colors"
                 style={{ fontFamily: "'Archivo Black', sans-serif" }}
               >
-                DONE &amp; LOCK IN ✓
+                DONE &amp; LOCK IN 
               </button>
             </div>
           </motion.div>

@@ -24,6 +24,8 @@ import { momentBus } from "../delight/moments";
 import { confettiBus } from "../delight/celebrate";
 import { emitCloseWin } from "../delight/watch";
 import { getMatchMemory } from "../delight/memories";
+import { getDynamicBroadsheetHeadline } from "../utils/broadsheetHeadline";
+export { getDynamicBroadsheetHeadline } from "../utils/broadsheetHeadline";
 import { grantAchievement } from "../utils/profile";
 import { achievementBus } from "../utils/achievementBus";
 import { soundManager } from "../utils/sound";
@@ -106,6 +108,8 @@ interface ResultsScreenProps {
   allUnlocked?: boolean;
   /** Room code shown in the finale broadcast header. */
   roomCode?: string;
+  /** Match index for deterministic headline rotation across rematches. */
+  matchCount?: number;
   /** Quiz pack title shown in the finale broadcast header. */
   quizTitle?: string;
   /** Opens the host's score-history overlay from the finale broadcast header. */
@@ -129,6 +133,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   allUnlocked = false,
   roomCode = "YY3WCJ",
   quizTitle = "QUIZ 30 (HINDI)",
+  matchCount = 0,
   onOpenHistory,
 }) => {
   const { t } = useSettings();
@@ -143,6 +148,30 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   const winner = standings[0];
   const isTie = !!winner && standings.length > 1 && (winner.score ?? 0) > 0 && winner.score === standings[1].score;
   const winnerAvatar = winner ? getAvatarByIdOrSeed(winner.avatar, winner.id) : undefined;
+
+  const broadsheet = useMemo(
+    () =>
+      getDynamicBroadsheetHeadline({
+        winner: winner
+          ? {
+              name: winner.name,
+              score: winner.score ?? 0,
+              correctCount: winner.correctCount,
+              wrongCount: winner.wrongCount,
+              fastestBuzz: winner.fastestBuzz,
+            }
+          : null,
+        runnerUp: standings[1] ? { name: standings[1].name, score: standings[1].score ?? 0 } : null,
+        players: standings,
+        fastestBuzzMs: winner?.fastestBuzz ?? undefined,
+        accuracy: accuracyOf(winner as any) ?? undefined,
+        correctCount: winner?.correctCount,
+        wrongCount: winner?.wrongCount,
+        roomCode,
+        matchCount,
+      }),
+    [winner, standings, roomCode, matchCount],
+  );
   const [failedAvatarId, setFailedAvatarId] = useState<string | null>(null);
 
   const [celebrationTier, setCelebrationTier] = useState<WinTier>("normal");
@@ -150,7 +179,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   const [copiedShare, setCopiedShare] = useState(false);
 
   const handleShare = async () => {
-    const lines = ["🏆 Buzzing With Quizzing - Results", ...standings.map((p, i) => `${i + 1}. ${p.name} - $${p.score}`)];
+    const lines = [" Buzzing With Quizzing - Results", ...standings.map((p, i) => `${i + 1}. ${p.name} - $${p.score}`)];
     const text = lines.join("\n");
     try {
       await navigator.clipboard.writeText(text);
@@ -247,12 +276,12 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
       setCelebrationTier(wc.tier);
       setIsLegendary(wc.legendary);
       const tierIcon: Record<WinTier, string> = {
-        dominant: "👑",
-        comeback: "🔙",
-        onePoint: "📸",
-        clutch: "🏁",
-        hugeStreak: "🔥",
-        normal: "🏆",
+        dominant: "",
+        comeback: "",
+        onePoint: "",
+        clutch: "",
+        hugeStreak: "",
+        normal: "",
       };
       momentBus.emit({ icon: tierIcon[wc.tier], title: wc.headline, subtitle: wc.sub, tone: "celebrate" });
       wc.sound();
@@ -264,7 +293,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
     } else if (me) {
       const acc = accuracyOf(me);
       momentBus.emit({
-        icon: "🧭",
+        icon: "",
         title: "Brave Explorer",
         subtitle:
           acc != null && acc < 40
@@ -274,7 +303,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
       });
     } else {
       momentBus.emit({
-        icon: "🗺️",
+        icon: "️",
         title: "Expedition Complete",
         subtitle: "Another unknown charted by your crew.",
         tone: "ink",
@@ -286,7 +315,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
       setIsLegendary(true);
       if (!iWonNow) {
         momentBus.emit({
-          icon: "🌟",
+          icon: "",
           title: "LEGENDARY MATCH",
           subtitle: "Nobody will describe this one normally.",
           tone: "celebrate",
@@ -440,29 +469,21 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                 THE BUZZING CHRONICLE
               </h1>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="bg-[#111111] text-[#FFD60A] px-3 py-1 self-start font-mono text-[11px] font-bold tracking-wider uppercase">
-                  FINALE EDITION! // OFFICIAL MATCH SIGN-OFF
+                <div className="bg-[#111111] text-[#FFD60A] px-3 py-1 self-start font-mono text-[11px] font-bold tracking-wider uppercase border-2 border-[#111111]">
+                  {broadsheet.kicker}
                 </div>
-                <span
-                  style={{ fontFamily: "'Archivo Black', sans-serif" }}
-                  className="bg-[#FFD60A] text-[#111111] border-2 border-[#111111] shadow-[3px_3px_0px_#111111] px-3 py-0.5 font-['Archivo_Black'] text-xs sm:text-sm tracking-widest uppercase inline-flex items-center gap-1.5"
-                >
-                  <svg className="w-7 h-5" viewBox="0 0 58 44" fill="#FFD60A" stroke="#111111" strokeWidth="2.5" strokeLinejoin="miter" aria-hidden="true">
-                    <path d="M6 38 8 14 19 25 29 5 39 25 50 14 52 38Z" />
-                    <path d="M8 38H50V42H8Z" />
-                    <path d="m17 16 3 4 3-4Z" fill="#FF3B1D" strokeWidth="1.5" />
-                    <path d="m27 10 3 4 3-4Z" fill="#00C271" strokeWidth="1.5" />
-                    <path d="m37 16 3 4 3-4Z" fill="#FF3B1D" strokeWidth="1.5" />
-                  </svg>
-                  CHAMPION
-                </span>
               </div>
               <p
                 style={{ fontFamily: "'Archivo Black', sans-serif" }}
-                className="font-['Archivo_Black'] text-2xl sm:text-3xl mt-3 text-[#111111] uppercase leading-tight"
+                className="font-['Archivo_Black'] text-2xl sm:text-3xl leading-[1.08] uppercase text-[#111111] mt-2.5"
               >
-                {winner ? `${winner.name} CLAIMS ULTIMATE TRIVIA CROWN!` : "THE ULTIMATE TRIVIA CROWN AWAITS!"}
+                {winner ? broadsheet.headline : "THE ULTIMATE TRIVIA CROWN AWAITS!"}
               </p>
+              {winner && (
+                <p className="font-mono text-xs font-bold text-neutral-700 mt-1.5">
+                  {broadsheet.subdeck}
+                </p>
+              )}
             </div>
 
             <div className="lg:col-span-5 relative h-full min-h-[210px] overflow-hidden">
@@ -481,8 +502,32 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               )}
               <div className="absolute inset-y-0 left-0 w-28 sm:w-36 bg-gradient-to-r from-[#FFFFFF] via-[#FFFFFF]/80 to-transparent z-10 pointer-events-none" />
 
+              {winner && (
+                <div
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 rotate-[-12deg] border-[3px] border-[#FACC15] bg-transparent px-4 py-2 font-black uppercase tracking-widest text-[#FACC15] opacity-90"
+                  style={{
+                    fontFamily: "'Archivo Black', sans-serif",
+                    textShadow: "0 0 2px rgba(250,204,21,0.6), 1px 1px 0 rgba(0,0,0,0.35)",
+                    boxShadow: "inset 0 0 0 1px rgba(250,204,21,0.35)",
+                    backgroundImage:
+                      "radial-gradient(circle at 20% 30%, rgba(250,204,21,0.15) 0%, transparent 40%), radial-gradient(circle at 80% 70%, rgba(250,204,21,0.12) 0%, transparent 45%)",
+                    WebkitMaskImage:
+                      "radial-gradient(circle, black 60%, transparent 100%)",
+                    maskImage:
+                      "radial-gradient(circle, black 60%, transparent 100%)",
+                  }}
+                >
+                  <span className="inline-flex items-center gap-2 text-lg sm:text-2xl">
+                    <svg className="w-6 h-5" viewBox="0 0 58 44" fill="none" stroke="#FACC15" strokeWidth="3" strokeLinejoin="miter" aria-hidden="true">
+                      <path d="M6 38 8 14 19 25 29 5 39 25 50 14 52 38Z" />
+                      <path d="M8 38H50V42H8Z" />
+                    </svg>
+                    CHAMPION
+                  </span>
+                </div>
+              )}
               <div className="absolute bottom-3 right-3 z-20 bg-[#111111] text-[#FFD60A] border-2 border-[#FFFFFF] px-3 py-1 font-mono text-xs font-black shadow-[3px_3px_0px_#111111]">
-                {winner ? `${winner.score} PTS • ⚡ ${fastestBuzzText || "—"}` : "NO SCORE • ⚡ —"}
+                {winner ? `${winner.score} PTS •  ${fastestBuzzText || "—"}` : "NO SCORE •  —"}
               </div>
             </div>
           </section>
@@ -490,7 +535,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           <section className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 bg-[#F4EFE6] border-b-2 border-[#111111] overflow-hidden">
             <div className="lg:col-span-6 border-b-2 lg:border-b-0 lg:border-r-2 border-[#111111] flex flex-col min-h-0">
               <div className="bg-[#111111] text-[#FFFFFF] px-4 py-2 flex items-center justify-between font-mono text-[11px] font-bold uppercase shrink-0">
-                <span className="text-[#FFD60A]">🏆 FINAL LEADERBOARD STANDINGS</span>
+                <span className="text-[#FFD60A]"> FINAL LEADERBOARD STANDINGS</span>
                 <span>{standings.length} CONTESTANTS</span>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto divide-y-2 divide-[#111111]">
@@ -531,8 +576,8 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
                         <span className="font-['Archivo_Black'] text-xs sm:text-sm text-[#111111] truncate uppercase">{player.name}</span>
                       </div>
                       <div className="flex items-center gap-2.5 shrink-0 font-mono text-[11px] font-bold">
-                        <span className="text-[#00C271]">✓{player.correctCount ?? 0}</span>
-                        <span className="text-[#FF3B1D]">✕{player.wrongCount ?? 0}</span>
+                        <span className="text-[#00C271]">{player.correctCount ?? 0}</span>
+                        <span className="text-[#FF3B1D]">{player.wrongCount ?? 0}</span>
                         <span className="hidden sm:inline bg-[#FFFFFF] border border-[#111111] px-1.5 py-0.5">{accuracyOf(player) ?? 0}%</span>
                         <span className="bg-[#111111] text-[#FFD60A] px-2.5 py-1 font-['Archivo_Black'] text-xs">{player.score} PTS</span>
                       </div>
@@ -544,23 +589,23 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
 
             <div className="lg:col-span-6 flex flex-col min-h-0">
               <div className="bg-[#111111] text-[#FFFFFF] px-4 py-2 flex items-center justify-between font-mono text-[11px] font-bold uppercase shrink-0">
-                <span className="text-[#00C271]">📊 MATCH ANALYSIS &amp; BADGES UNLOCKED</span>
+                <span className="text-[#00C271]"> MATCH ANALYSIS &amp; BADGES UNLOCKED</span>
                 <span className="text-[#FFD60A]">EDITOR'S PICKS</span>
               </div>
               <div className="p-3.5 flex-1 min-h-0 overflow-y-auto flex flex-col justify-between gap-2.5">
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-[#FFFFFF] border-2 border-[#111111] shadow-[2px_2px_0px_#111111] p-2 min-w-0">
-                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75">⚡ FASTEST BUZZ</div>
+                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75"> FASTEST BUZZ</div>
                     <div className="font-['Archivo_Black'] text-sm sm:text-base text-[#111111] truncate">{fastestBuzzText}</div>
                   </div>
                   <div className="bg-[#FFFFFF] border-2 border-[#111111] shadow-[2px_2px_0px_#111111] p-2 min-w-0">
-                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75">🎯 TOUGHEST TILE</div>
+                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75"> TOUGHEST TILE</div>
                     <div className="font-['Archivo_Black'] text-sm sm:text-base text-[#111111] truncate">
                       {matchMemory.hardestQuestion > 0 ? `${matchMemory.hardestQuestion} PTS` : "—"}
                     </div>
                   </div>
                   <div className="bg-[#FFFFFF] border-2 border-[#111111] shadow-[2px_2px_0px_#111111] p-2 min-w-0">
-                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75">🔄 BIGGEST SWING</div>
+                    <div className="font-mono text-[9px] sm:text-[10px] font-black uppercase text-[#111111]/75"> BIGGEST SWING</div>
                     <div className="font-['Archivo_Black'] text-sm sm:text-base text-[#111111] truncate">
                       {matchMemory.biggestSwing > 0 ? `${matchMemory.biggestSwing} PTS` : "0 PTS"}
                     </div>

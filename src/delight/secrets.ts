@@ -22,7 +22,7 @@ const WORDS: { match: string; fire: () => void }[] = [
     fire: () => {
       soundManager.playBuzzer();
       momentBus.emit({
-        icon: "🔔",
+        icon: "",
         title: "You rang?",
         subtitle: "The buzzer hears you. Always.",
         tone: "playful",
@@ -34,7 +34,7 @@ const WORDS: { match: string; fire: () => void }[] = [
     fire: () => {
       soundManager.playDiscover();
       momentBus.emit({
-        icon: "🗺️",
+        icon: "️",
         title: "A map unfolds",
         subtitle: "You whispered the old word. The board glows a little.",
         tone: "ink",
@@ -47,7 +47,7 @@ const WORDS: { match: string; fire: () => void }[] = [
     fire: () => {
       soundManager.playPop();
       momentBus.emit({
-        icon: "👋",
+        icon: "",
         title: "Hello, traveler",
         subtitle: "The game waves back. You're not alone here.",
         tone: "warm",
@@ -97,7 +97,7 @@ export const useGlobalSecrets = (): void => {
           konamiIdx = 0;
           soundManager.playEgg();
           momentBus.emit({
-            icon: "🌈",
+            icon: "",
             title: "CHEAT CODE ACCEPTED",
             subtitle: "30 lives granted. (Emotionally. The score is safe.)",
             tone: "celebrate",

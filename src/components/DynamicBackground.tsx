@@ -3,10 +3,10 @@ import { momentBus } from '../delight/moments';
 import { soundManager } from '../utils/sound';
 
 const EGG_MESSAGES = [
-  { icon: '⚡', title: 'Voltage found!', subtitle: 'You tapped into the hidden current.' },
-  { icon: '🛰️', title: 'Secret signal', subtitle: 'The arena noticed your curiosity.' },
-  { icon: '🎮', title: 'Bonus life!', subtitle: 'Not really. But the vibe is immaculate.' },
-  { icon: '✨', title: 'Easter egg!', subtitle: 'Curiosity is your power-up.' },
+  { icon: '', title: 'Voltage found!', subtitle: 'You tapped into the hidden current.' },
+  { icon: '️', title: 'Secret signal', subtitle: 'The arena noticed your curiosity.' },
+  { icon: '', title: 'Bonus life!', subtitle: 'Not really. But the vibe is immaculate.' },
+  { icon: '', title: 'Easter egg!', subtitle: 'Curiosity is your power-up.' },
 ];
 
 export const DynamicBackground: React.FC = () => {
@@ -51,7 +51,7 @@ export const DynamicBackground: React.FC = () => {
       />
       <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#FFD60A]/10 to-transparent" />
       {!secretStarGone && (
-        <button className="absolute pointer-events-auto text-[#111111]/15 hover:text-[#FF3B1D] transition-all hover:scale-150" style={{ right: '7%', top: '16%', fontSize: 20 }} onClick={onSecretStar} title=" ">✦</button>
+        <button className="absolute pointer-events-auto text-[#111111]/15 hover:text-[#FF3B1D] transition-all hover:scale-150" style={{ right: '7%', top: '16%', fontSize: 20 }} onClick={onSecretStar} title=" "></button>
       )}
       <button className="absolute pointer-events-auto text-[#111111]/10 hover:text-[#2563EB] transition-all hover:scale-125" style={{ left: '5%', bottom: '14%', fontSize: 16 }} onClick={onMystery} title=" ">◈</button>
     </div>

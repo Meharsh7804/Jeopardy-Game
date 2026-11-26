@@ -214,7 +214,7 @@ interface RoomContextProps {
     timerSeconds?: number,
     opts?: { dailyDoublePlayerId?: string; wager?: number },
   ) => Promise<void>;
-  setAudioPlaying: (playing: boolean) => Promise<void>;
+  setAudioPlaying: (playing: boolean, currentTime?: number) => Promise<void>;
   judgeAnswer: (correct: boolean) => Promise<void>;
   splitPoints: (playerIds: string[]) => Promise<void>;
   adjustScore: (playerId: string, delta: number, reason: string) => Promise<void>;
@@ -452,6 +452,7 @@ const code = genId(6);
           completedQuestions: {},
           activeQuestion: null,
           createdAt: Date.now(),
+          matchCount: 0,
         };
 
         await set(ref(db, `rooms/${code}`), sanitize(newRoom));
@@ -522,7 +523,7 @@ const code = genId(6);
         type: question.type,
         revealAnswer: false,
         audioPlaying: true,
-        ...(timerSeconds && timerSeconds > 0 ? { timerDuration: timerSeconds } : {}),
+        audioCurrentTime: 0,        ...(timerSeconds && timerSeconds > 0 ? { timerDuration: timerSeconds } : {}),
         // Server-clock start time so reaction times are comparable to the
         // server-stamped buzz timestamps, regardless of any device clock.
         // (Stored as the Firebase sentinel; resolves to an epoch-ms number.)
@@ -595,8 +596,9 @@ const code = genId(6);
   );
 
   const setAudioPlaying = useCallback(
-    async (playing: boolean) => {
+    async (playing: boolean, currentTime?: number) => {
       if (!roomCode || !room?.activeQuestion) return;
+      const ct = typeof currentTime === "number" ? currentTime : room.activeQuestion.audioCurrentTime;
       setRoom((prev) =>
         prev && prev.activeQuestion
           ? {
@@ -604,12 +606,14 @@ const code = genId(6);
               activeQuestion: {
                 ...prev.activeQuestion,
                 audioPlaying: playing,
+                audioCurrentTime: ct,
               },
             }
           : prev,
       );
       await update(ref(db, `rooms/${roomCode}/activeQuestion`), {
         audioPlaying: playing,
+        audioCurrentTime: ct ?? null,
       });
     },
     [roomCode, room],
@@ -666,7 +670,7 @@ const code = genId(6);
         const payeeName = players[award.payeeId]?.name ?? "Player";
         const ownerName = players[buzzPlayerId]?.name ?? "Player";
         const bonusNote =
-          firstBuzzBonus > 0 ? ` (+$${firstBuzzBonus} ⚡ first-buzz bonus)` : "";
+          firstBuzzBonus > 0 ? ` (+$${firstBuzzBonus}  first-buzz bonus)` : "";
         const redirectNote =
           award.payeeId !== buzzPlayerId ? ` → redirected to ${payeeName}` : "";
         const { entry, newScore } = buildScoreChange(
@@ -856,10 +860,28 @@ const code = genId(6);
         delta,
         reason || `Manual adjustment for ${playerName}`,
       );
-      await update(ref(db, `rooms/${roomCode}`), {
-        [`players/${playerId}/score`]: newScore,
-        [`scoreHistory/${entry.id}`]: entry,
-      });
+      // Optimistic local update so the leaderboard reflects the change immediately
+      setRoom((prev) =>
+        prev && prev.players?.[playerId]
+          ? {
+              ...prev,
+              players: {
+                ...prev.players,
+                [playerId]: { ...prev.players[playerId], score: newScore },
+              },
+              scoreHistory: { ...(prev.scoreHistory || {}), [entry.id]: entry },
+            }
+          : prev,
+      );
+      try {
+        await update(ref(db, `rooms/${roomCode}`), {
+          [`players/${playerId}/score`]: newScore,
+          [`scoreHistory/${entry.id}`]: entry,
+        });
+      } catch (e) {
+        console.error("adjustScore failed", e);
+        throw e;
+      }
     },
     [roomCode, room],
   );
@@ -1014,7 +1036,7 @@ const code = genId(6);
       updates[`players/${pid}/abilityUnlocked`] = false;
       updates[`players/${pid}/abilityUsed`] = false;
     }
-    await update(ref(db, `rooms/${roomCode}`), updates);
+    await update(ref(db, `rooms/${roomCode}`), { ...updates, matchCount: (room.matchCount ?? 0) + 1 });
   }, [roomCode, room, myId]);
 
   // ── Host: kick a player ────────────────────────────────────────────────────
@@ -1193,7 +1215,7 @@ const existingRoom = snap.val() as Room;
     if (gate === "muted") {
       abilityNoticeBus.emit({
         tone: "lock",
-        icon: "🔒",
+        icon: "",
         title: "LOCKED OUT",
       });
       return "muted";
@@ -1201,7 +1223,7 @@ const existingRoom = snap.val() as Room;
     if (gate === "owner") {
       abilityNoticeBus.emit({
         tone: "ace",
-        icon: "⚡",
+        icon: "",
         title: "YOUR WINDOW",
         subtitle: "only you can buzz right now",
       });

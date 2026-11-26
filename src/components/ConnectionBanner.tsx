@@ -42,7 +42,7 @@ export const ConnectionBanner: React.FC = () => {
       role="status"
       className="fixed top-0 left-0 right-0 z-[110] h-12 w-full bg-[#FF3B1D] text-[#FFFFFF] border-b-2 border-[#111111] flex items-center justify-between gap-3 px-4 sm:px-6 font-mono text-[10px] sm:text-sm font-black tracking-wide uppercase"
     >
-      <span className="min-w-0">🚨 RECONNECTING TO GAME SERVER... YOUR BUZZ &amp; SCORE ARE SAFE.</span>
+      <span className="min-w-0"> RECONNECTING TO GAME SERVER... YOUR BUZZ &amp; SCORE ARE SAFE.</span>
       <RefreshCw className="w-5 h-5 shrink-0 animate-spin" aria-label="Retrying connection" />
     </div>
   );

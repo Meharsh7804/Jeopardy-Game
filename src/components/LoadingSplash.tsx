@@ -23,7 +23,7 @@ export const LoadingSplash: React.FC<LoadingSplashProps> = ({ message }) => {
       }}
     >
       <header className="h-12 w-full shrink-0 bg-[#FF3B1D] text-[#FFFFFF] border-b-2 border-[#111111] flex items-center justify-between gap-3 px-4 sm:px-6 font-mono text-xs sm:text-sm font-black tracking-wide uppercase">
-        <span className="min-w-0">🚨 RECONNECTING TO GAME SERVER... YOUR BUZZ &amp; SCORE ARE SAFE.</span>
+        <span className="min-w-0"> RECONNECTING TO GAME SERVER... YOUR BUZZ &amp; SCORE ARE SAFE.</span>
         <RefreshCw className="w-5 h-5 shrink-0 animate-spin" aria-label="Retrying connection" />
       </header>
 

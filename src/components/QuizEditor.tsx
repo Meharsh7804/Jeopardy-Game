@@ -52,8 +52,25 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
   const { saveQuiz, deleteQuiz } = useQuizLibrary();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const normalizeQuestionType = (q: any): QuestionType => {
+    const t = q?.type;
+    if (t === "text" || t === "image" || t === "audio") return t;
+    const url = q?.mediaUrl;
+    if (url && typeof url === "string") {
+      if (url.startsWith("data:audio") || /\.(mp3|wav|ogg|m4a|aac)$/i.test(url)) return "audio";
+      return "image";
+    }
+    return "text";
+  };
   const [quiz, setQuiz] = useState<Quiz>(() => {
-    if (quizToEdit) return JSON.parse(JSON.stringify(quizToEdit));
+    if (quizToEdit) {
+      const clone = JSON.parse(JSON.stringify(quizToEdit));
+      clone.categories = (clone.categories || []).map((c: any) => ({
+        ...c,
+        questions: (c.questions || []).map((q: any) => ({ ...q, type: normalizeQuestionType(q) })),
+      }));
+      return clone;
+    }
     const newId = `quiz-${Math.random().toString(36).slice(2, 9)}`;
     return {
       id: newId,
@@ -288,10 +305,9 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
 
     const isImage = file.type.startsWith("image/");
     const isAudio = file.type.startsWith("audio/");
-    const isVideo = file.type.startsWith("video/");
 
-    if (!isImage && !isAudio && !isVideo) {
-      alert("Please select an image, audio, or video file.");
+    if (!isImage && !isAudio) {
+      alert("Please select an image or audio file.");
       return;
     }
 
@@ -405,9 +421,17 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
                 text: q.text || "",
                 answer: q.answer || "",
                 value: q.value || 100,
-                type: ["text", "image", "both"].includes(q.type)
-                  ? q.type
-                  : "text",
+                type: (() => {
+                  const t = q.type;
+                  if (t === "text" || t === "image" || t === "audio") return t;
+                  // Legacy 'video' / 'both' fallback
+                  const url = q.mediaUrl;
+                  if (url) {
+                    if (typeof url === "string" && (url.startsWith("data:audio") || /\.(mp3|wav|ogg|m4a|aac)$/i.test(url))) return "audio";
+                    return "image";
+                  }
+                  return "text";
+                })(),
                 mediaUrl: q.mediaUrl,
                 isDailyDouble: !!q.isDailyDouble,
                 difficulty: ["easy","medium","hard"].includes(q.difficulty) ? q.difficulty : undefined,
@@ -455,9 +479,17 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
             cat.questions.push({
               id: `q-${Math.random().toString(36).slice(2, 9)}`,
               value: parseInt(cols[1]) || 100,
-              type: (["text", "image", "both"].includes(cols[2])
-                ? cols[2]
-                : "text") as QuestionType,
+              type: (() => {
+                const t = cols[2];
+                if (t === "text" || t === "image" || t === "audio") return t as QuestionType;
+                // Legacy 'video' / 'both' fallback
+                const url = cols[6] && cols[6] !== "[embedded]" ? cols[6] : undefined;
+                if (url) {
+                  if (typeof url === "string" && (url.startsWith("data:audio") || /\.(mp3|wav|ogg|m4a|aac)$/i.test(url))) return "audio" as QuestionType;
+                  return "image" as QuestionType;
+                }
+                return "text" as QuestionType;
+              })(),
               text: cols[3] || "",
               answer: cols[4] || "",
               isDailyDouble: cols[5] === "true",
@@ -682,7 +714,7 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
           {/* Metadata */}
           <div className="bg-[#FFFFFF] border-2 border-[#111111] shadow-[6px_6px_0px_#111111] overflow-hidden">
             <h3 className="bg-[#111111] text-[#FFD60A] px-4 py-2.5 font-mono text-xs font-bold uppercase flex items-center justify-between">
-              📋 QUIZ DETAILS
+               QUIZ DETAILS
             </h3>
             <div className="p-4 space-y-3">
             <div className="space-y-1">
@@ -1059,12 +1091,12 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
                     {/* Media type + upload */}
 <div className="bg-[#F4EFE6] border-2 border-[#111111] p-3 flex flex-col gap-3">
   <div className="flex items-center gap-1.5 flex-wrap">
-    {(["text", "image", "audio", "video", "both"] as const).map((t) => (
+    {(["text", "image", "audio"] as const).map((t) => (
       <button
         key={t}
         type="button"
         onClick={() => setQ(activeCatIdx, qIdx, "type", t)}
-        className={`px-3 py-1.5 border-2 border-[#111111] font-mono text-xs uppercase transition-colors ${
+        className={`px-3 py-1.5 border-2 border-[#111111] rounded-none font-mono text-xs uppercase transition-colors ${
           q.type === t
             ? "bg-[#111111] text-[#FFD60A] font-black"
             : "bg-[#FFFFFF] hover:bg-[#FFD60A] text-[#111111] font-bold"
@@ -1083,7 +1115,7 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
           placeholder="https://example.com/media.mp4"
           value={q.mediaUrl || ""}
           onChange={(e) => {
-            // ✅ FIXED: Directly set the mediaUrl to the typed/pasted text
+            //  FIXED: Directly set the mediaUrl to the typed/pasted text
             setQ(activeCatIdx, qIdx, "mediaUrl", e.target.value);
           }}
           className="w-full bg-[#FFFFFF] border-2 border-[#111111] rounded-none pl-9 pr-3 py-2 text-xs text-[#111111] outline-none"
@@ -1096,7 +1128,7 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
           <Upload className="w-4 h-4" />
           <input
             type="file"
-            accept="image/*,audio/*,video/*"
+            accept="image/*,audio/*"
             className="hidden"
             disabled={uploading?.key === `${activeCatIdx}-${qIdx}`}
             onChange={(e) => {
@@ -1114,8 +1146,6 @@ export const QuizEditor: React.FC<QuizEditorProps> = ({
           <div className="relative w-10 h-10 overflow-hidden border-2 border-[#111111] shrink-0 bg-black group flex items-center justify-center">
             {q.mediaUrl.startsWith("data:audio") || q.type === "audio" ? (
               <span className="text-[8px] font-bold text-[#111111] uppercase tracking-widest">Audio</span>
-            ) : q.mediaUrl.startsWith("data:video") || q.type === "video" ? (
-              <video src={q.mediaUrl} className="w-full h-full object-cover" />
             ) : (
               <img
                 src={q.mediaUrl}

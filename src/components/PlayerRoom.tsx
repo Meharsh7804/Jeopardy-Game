@@ -17,7 +17,7 @@ import { recordGameEnd, checkLiveAchievements, achievementProgress, achievementH
 import type { AchievementId } from "../utils/profile";
 import { achievementBus } from "../utils/achievementBus";
 import { AchievementToast } from "./AchievementToast";
-import { MediaViewer } from "./ui/MediaViewer";
+import { MediaViewer, isAudioQuestion } from "./ui/MediaViewer";
 import { useScoreCelebrations } from "../delight/celebrate";
 import { momentBus } from "../delight/moments";
 import { useRoomCodeWordEgg } from "../delight/gameEggs";
@@ -43,7 +43,7 @@ const LOBBY_TRIVIA_FALLBACK = [
   "A group of flamingos is called a flamboyance.",
 ];
 
-const REACTION_EMOJIS = ["🔥", "🎉", "😂", "😱", "🤯", "🙏"];
+const REACTION_EMOJIS = ["", "", "", "", "", ""];
 
 interface PlayerRoomProps {
   onLeave: () => void;
@@ -56,6 +56,32 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   const [categoryModalId, setCategoryModalId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showQR, setShowQR] = useState(false);
+
+  // Player read-only audio monitor state
+  const playerAudioRef = useRef<HTMLAudioElement>(null);
+  const [playerCurrentTime, setPlayerCurrentTime] = useState(0);
+  const [playerDuration, setPlayerDuration] = useState(0);
+  const formatTime = (s: number) => {
+    if (!isFinite(s) || s < 0) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  // Sync player read-only audio element with host broadcast state
+  useEffect(() => {
+    const audio = playerAudioRef.current;
+    const aq = room?.activeQuestion;
+    if (!audio || !aq || !isAudioQuestion(aq as any)) return;
+    if (typeof aq.audioCurrentTime === "number" && Math.abs(audio.currentTime - aq.audioCurrentTime) > 0.4) {
+      audio.currentTime = aq.audioCurrentTime;
+    }
+    if (aq.audioPlaying === false) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
+  }, [room?.activeQuestion?.audioPlaying, room?.activeQuestion?.audioCurrentTime]);
   const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
@@ -404,14 +430,14 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
     onRepeat: (key) => {
       if (key.startsWith("react:")) {
         momentBus.emit({
-          icon: "💬",
+          icon: "",
           title: "Feeling chatty?",
           subtitle: "The reactions panel is not a drum machine. (It is now.)",
           tone: "playful",
         });
       } else if (key === "buzz") {
         momentBus.emit({
-          icon: "🥺",
+          icon: "",
           title: "Easy, tiger",
           subtitle: "One buzz is enough — the host heard you.",
           tone: "playful",
@@ -445,7 +471,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
       soundManager.playEgg();
       abilityNoticeBus.emit({
         tone: "ace",
-        icon: "⚡",
+        icon: "",
         title: myAbility.abilityName,
         subtitle: "ability activated",
       });
@@ -529,7 +555,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
     e.preventDefault();
     soundManager.playEgg();
     momentBus.emit({
-      icon: "🤫",
+      icon: "",
       title: "Right-click buzz?",
       subtitle: "You found the hidden buzz. The game winks back.",
       tone: "playful",
@@ -595,7 +621,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
   });
   useIdleNudge({
     active: room?.phase === "buzzing" && !hasBuzzed,
-    icon: "⚡",
+    icon: "",
     tone: "playful",
     messages: [
       "The board is live — tap to buzz!",
@@ -617,7 +643,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
       quantumShown.current = true;
       soundManager.playEgg();
       momentBus.emit({
-        icon: "⚡",
+        icon: "",
         title: "Quantum Buzz!",
         subtitle: "You buzzed before the question finished loading.",
         tone: "ink",
@@ -842,7 +868,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                                 {pDef && <div className="bg-[#111111] text-[#FFFFFF] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider truncate max-w-full">{pDef.name} • {pDef.abilityName}</div>}
                               </div>
                               <div className={`border-t-2 border-[#111111] py-1 text-center font-mono text-[10px] font-black tracking-widest uppercase ${connected ? "bg-[#00C271] text-[#111111]" : "bg-[#FF3B1D] text-white"}`}>
-                                {connected ? "✓ Locked In // Ready" : "● Disconnected"}
+                                {connected ? " Locked In // Ready" : "● Disconnected"}
                               </div>
                             </motion.div>
                           );
@@ -895,7 +921,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                         <span className="font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-[#111111]">Best: {buzzerBestMs !== null ? `${buzzerBestMs} ms` : "--- ms"}</span>
                       </div>
                       <button type="button" onClick={triggerBuzzerSoundcheck} className="w-full py-3 bg-[#F4EFE6] hover:bg-[#FFD60A] active:translate-x-[2px] active:translate-y-[2px] border-2 border-[#111111] shadow-[3px_3px_0_#111111] active:shadow-none font-black uppercase tracking-[0.02em] text-[#111111] transition-[transform,box-shadow,background-color]" style={{ fontFamily: "'Archivo Black', sans-serif" }}>
-                        ⚡ Test Buzzer (Space)
+                         Test Buzzer (Space)
                       </button>
                       <div className="mt-2 font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-[#00C271]">{buzzerStatus}</div>
                     </section>
@@ -1079,7 +1105,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                             <span className="border border-[#00C271] text-[#00C271] px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.06em]">Active</span>
                           ) : canActivate ? (
                             <button type="button" onClick={() => setShowActivation(true)} className="bg-[#00C271] hover:bg-[#FFD60A] text-[#111111] font-['Archivo_Black'] text-xs px-4 py-2 border-2 border-[#FFFFFF] shadow-[3px_3px_0_#FFD60A] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none uppercase tracking-[0.03em] transition-[transform,box-shadow,background-color]">
-                              ⚡ Activate Power-Up
+                               Activate Power-Up
                             </button>
                           ) : (
                             <span className="border border-[#444444] text-[#888888] px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.06em]">Locked</span>
@@ -1098,7 +1124,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
             const aq = room.activeQuestion;
             const buzzDisabled = isSpectator || (!!aq.dailyDoublePlayerId && aq.dailyDoublePlayerId !== myId) || silencedNow || jailedNow;
             const buzzLabel = isSpectator ? "Spectating" : (aq.dailyDoublePlayerId && aq.dailyDoublePlayerId !== myId) ? "Daily Double" : jailedNow ? "In Jail" : silencedNow ? "Silenced" : "";
-            const statusLine = buzzSettling ? "● SIGNALS LOCKING — HOST IS ADJUDICATING..." : hasBuzzed ? `● ${myName.toUpperCase()} BUZZED IN — WAITING FOR HOST` : buzzDisabled ? `● ${buzzLabel.toUpperCase()} — BUZZER LOCKED` : "⚡ THE BOARD IS LIVE — TAP OR PRESS [SPACE] TO BUZZ!";
+            const statusLine = buzzSettling ? "● SIGNALS LOCKING — HOST IS ADJUDICATING..." : hasBuzzed ? `● ${myName.toUpperCase()} BUZZED IN — WAITING FOR HOST` : buzzDisabled ? `● ${buzzLabel.toUpperCase()} — BUZZER LOCKED` : " THE BOARD IS LIVE — TAP OR PRESS [SPACE] TO BUZZ!";
             return (
             <motion.div key="buzzing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="flex-1 min-h-0 w-full flex flex-col overflow-hidden bg-[#F4EFE6]" style={{ backgroundImage: "linear-gradient(to right, #E5DEC9 1px, transparent 1px), linear-gradient(to bottom, #E5DEC9 1px, transparent 1px)", backgroundSize: "40px 40px" }}>
               {/* Top Telemetry Bar */}
@@ -1128,15 +1154,53 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     </div>
                     {timeLeft !== null && (
                       <span className={`px-3 py-0.5 font-mono text-sm font-black shrink-0 ${aq.paused ? "bg-[#F4EFE6] text-[#111111]" : timeLeft < 4 ? "bg-[#FF3B1D] text-[#FFFFFF]" : "bg-[#FFD60A] text-[#111111]"}`}>
-                        {aq.paused ? "PAUSED" : `⚡ ${timeLeft.toFixed(2)}s`}
+                        {aq.paused ? "PAUSED" : ` ${timeLeft.toFixed(2)}s`}
                       </span>
                     )}
                   </div>
                   <div className="p-6 sm:p-8 text-center bg-[#FFFFFF] relative">
                     <div className="absolute top-3 right-3 z-20"><ReactionGauge openedAt={openedAt} myReactionMs={myReaction} live={!hasBuzzed && !silencedNow && !jailedNow} /></div>
-                    {aq.mediaUrl && (
+                    {aq.mediaUrl && !isAudioQuestion(aq) && (
                       <div className="relative overflow-hidden border-2 border-[#111111] shadow-[4px_4px_0_#111111] mx-auto max-w-full max-h-56 bg-black mb-5">
                         <MediaViewer url={aq.mediaUrl} type={aq.type as any} audioPlaying={aq.audioPlaying} className="max-h-56 w-full object-contain" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                      </div>
+                    )}
+                    {isAudioQuestion(aq) && (
+                      <div className="w-full max-w-2xl mx-auto mb-5 shrink-0 select-none pointer-events-none">
+                        <audio
+                          ref={playerAudioRef}
+                          src={aq.mediaUrl}
+                          className="hidden"
+                          onTimeUpdate={(e) => setPlayerCurrentTime((e.target as HTMLAudioElement).currentTime)}
+                          onLoadedMetadata={(e) => setPlayerDuration((e.target as HTMLAudioElement).duration || 0)}
+                        />
+                        <div className="w-full bg-[#FFFFFF] border-[3px] border-[#111111] shadow-[4px_4px_0px_#111111] p-4 sm:p-5 rounded-none">
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <span className="font-['Archivo_Black'] text-sm text-[#111111] uppercase"> AUDIO CLUE</span>
+                            {aq.audioPlaying === false ? (
+                              <span className="bg-[#FF3B1D] text-[#FFFFFF] px-2.5 py-0.5 font-mono text-[10px] font-black uppercase">⏸ PAUSED BY HOST</span>
+                            ) : (
+                              <span className="bg-[#00C271] text-[#111111] px-2.5 py-0.5 font-mono text-[10px] font-black uppercase">● LIVE ON AIR</span>
+                            )}
+                          </div>
+                          <div className="h-14 bg-[#F4EFE6] border-2 border-[#111111]/25 px-4 flex items-center justify-center gap-1.5 mb-3">
+                            {Array.from({ length: 16 }).map((_, i) => (
+                              <span
+                                key={i}
+                                className="w-1.5 sm:w-2 bg-[#FFD60A] transition-all duration-150"
+                                style={{
+                                  height: aq.audioPlaying !== false ? `${8 + ((i * 7) % 24)}px` : "4px",
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-3 bg-[#E5DEC9] border border-[#111111]/60 overflow-hidden">
+                              <div className="h-full bg-[#FFD60A] transition-all duration-150" style={{ width: `${playerDuration ? (playerCurrentTime / playerDuration) * 100 : 0}%` }} />
+                            </div>
+                            <span className="font-mono text-xs font-black text-[#111111] shrink-0">{formatTime(playerCurrentTime)} / {formatTime(playerDuration)}</span>
+                          </div>
+                        </div>
                       </div>
                     )}
                     <p className="text-2xl sm:text-3xl font-extrabold text-[#111111] leading-snug whitespace-pre-wrap" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{aq.text}</p>
@@ -1146,13 +1210,13 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
 
                 {/* Buzzer / State */}
                 <div className="my-auto flex flex-col items-center gap-3 py-2">
-                  {windowOwnerNow === myId && !hasBuzzed && !buzzDisabled && <div className="px-3 py-1.5 bg-[#FFD60A] border-2 border-[#111111] font-mono text-[10px] font-bold uppercase tracking-[0.06em] text-[#111111]">⚡ Your window — only you can buzz</div>}
+                  {windowOwnerNow === myId && !hasBuzzed && !buzzDisabled && <div className="px-3 py-1.5 bg-[#FFD60A] border-2 border-[#111111] font-mono text-[10px] font-bold uppercase tracking-[0.06em] text-[#111111]"> Your window — only you can buzz</div>}
                   {isSpectator ? (
                     <div className="w-56 h-32 sm:w-64 sm:h-36 border-[3px] border-[#111111] shadow-[4px_4px_0_#111111] bg-[#E6E0D4] text-[#111111]/60 flex flex-col items-center justify-center gap-1.5"><Eye className="w-8 h-8" /><span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-2xl uppercase">Spectating</span></div>
                   ) : aq.dailyDoublePlayerId && aq.dailyDoublePlayerId !== myId ? (
                     <div className="w-56 h-32 sm:w-64 sm:h-36 border-[3px] border-[#111111] shadow-[4px_4px_0_#111111] bg-[#FFD60A] text-[#111111] flex flex-col items-center justify-center gap-1 px-4 text-center"><span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-xl uppercase">Daily Double</span><span className="font-mono text-[10px] font-bold uppercase">{room.players[aq.dailyDoublePlayerId]?.name} is answering</span></div>
                   ) : silencedNow || jailedNow ? (
-                    <div className="w-56 h-32 sm:w-64 sm:h-36 border-[3px] border-[#111111] shadow-[3px_3px_0_#111111] bg-[#E6E0D4] text-[#111111]/50 cursor-not-allowed flex flex-col items-center justify-center gap-1.5"><span className="text-2xl">🔒</span><span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-xl sm:text-2xl uppercase">{jailedNow ? "In Jail" : "Silenced"}</span></div>
+                    <div className="w-56 h-32 sm:w-64 sm:h-36 border-[3px] border-[#111111] shadow-[3px_3px_0_#111111] bg-[#E6E0D4] text-[#111111]/50 cursor-not-allowed flex flex-col items-center justify-center gap-1.5"><span className="text-2xl"></span><span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-xl sm:text-2xl uppercase">{jailedNow ? "In Jail" : "Silenced"}</span></div>
                   ) : !hasBuzzed ? (
                     <motion.button onClick={handleBuzz} onContextMenu={handleSecretBuzz} whileTap={{ x: 4, y: 4 }} className="w-56 h-32 sm:w-64 sm:h-36 border-[3px] border-[#111111] shadow-[8px_8px_0_#111111] active:shadow-[2px_2px_0_#111111] transition-all flex flex-col items-center justify-center gap-1.5 select-none bg-[#FF3B1D] hover:bg-[#E02E12] text-[#FFFFFF] cursor-pointer">
                       <Zap className="w-8 h-8 fill-current" />
@@ -1161,9 +1225,9 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                     </motion.button>
                   ) : (
                     <div className="w-72 sm:w-80 py-5 bg-[#FFD60A] text-[#111111] border-[3px] border-[#111111] shadow-[6px_6px_0_#111111] flex flex-col items-center justify-center gap-1.5">
-                      <span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="whitespace-nowrap text-3xl sm:text-4xl tracking-wider uppercase leading-none">⚡ Buzzed!</span>
+                      <span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="whitespace-nowrap text-3xl sm:text-4xl tracking-wider uppercase leading-none"> Buzzed!</span>
                       <span className="bg-[#111111] text-[#FFD60A] px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-widest uppercase">{buzzSettling ? "Locking In..." : myQueuePos === 1 ? "Speak Your Answer Now" : `Queue #${myQueuePos}`}</span>
-                      {myReaction !== null && !buzzSettling && <span className="font-mono text-xs font-black">⚡ {fmtReaction(myReaction)}</span>}
+                      {myReaction !== null && !buzzSettling && <span className="font-mono text-xs font-black"> {fmtReaction(myReaction)}</span>}
                     </div>
                   )}
 
@@ -1173,7 +1237,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                       <p className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111] mb-2">{riskChoice === "risk" ? "RISKY MODE — ×2 / −2×" : "PLAYING SAFE — ×1"}</p>
                       <div className="grid grid-cols-2 gap-2">
                         <button onClick={() => setRiskChoice("normal")} disabled={riskChoice === "normal"} className={`py-2 border-2 border-[#111111] font-mono text-[10px] font-bold uppercase ${riskChoice === "normal" ? "bg-[#00C271] text-[#111111]" : "bg-[#F4EFE6] text-[#111111]"}`}>Normal ×1</button>
-                        <button onClick={() => setRiskChoice("risk")} disabled={riskChoice === "risk"} className={`py-2 border-2 border-[#111111] font-mono text-[10px] font-bold uppercase ${riskChoice === "risk" ? "bg-[#FF3B1D] text-white" : "bg-[#F4EFE6] text-[#111111]"}`}>☠️ Risk ×2</button>
+                        <button onClick={() => setRiskChoice("risk")} disabled={riskChoice === "risk"} className={`py-2 border-2 border-[#111111] font-mono text-[10px] font-bold uppercase ${riskChoice === "risk" ? "bg-[#FF3B1D] text-white" : "bg-[#F4EFE6] text-[#111111]"}`}>️ Risk ×2</button>
                       </div>
                     </div>
                   )}
@@ -1209,7 +1273,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                                 <span className="font-mono text-xs font-black w-5">#{idx + 1}</span>
                                 <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={28} className="!rounded-none w-7 h-7 border border-[#111111] shrink-0" />
                                 <span className="font-bold text-sm uppercase truncate flex-1">{p.name}{isMe ? " (YOU)" : ""}</span>
-                                {fmtReaction(react) && <span className="font-mono text-[10px] font-bold bg-[#111111] text-[#FFD60A] px-2 py-0.5">⚡ {fmtReaction(react)}</span>}
+                                {fmtReaction(react) && <span className="font-mono text-[10px] font-bold bg-[#111111] text-[#FFD60A] px-2 py-0.5"> {fmtReaction(react)}</span>}
                               </div>
                             );
                           })}
@@ -1324,6 +1388,7 @@ export const PlayerRoom: React.FC<PlayerRoomProps> = ({ onLeave }) => {
                 allUnlocked={allUnlocked}
                 quizTitle={quiz?.title}
                 roomCode={room.id}
+                matchCount={room.matchCount ?? 0}
               />
             </motion.div>
           )}

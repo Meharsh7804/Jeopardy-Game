@@ -64,7 +64,7 @@ export function useWrongStreakEncouragement(
         if (streak.current === 2) {
           soundManager.playWobble();
           momentBus.emit({
-            icon: "🫠",
+            icon: "",
             title: "Rough patch",
             subtitle: "Two misses — the map is playing hard to get.",
             tone: "warm",
@@ -72,14 +72,14 @@ export function useWrongStreakEncouragement(
         } else if (streak.current === 4) {
           soundManager.playWobble();
           momentBus.emit({
-            icon: "🧭",
+            icon: "",
             title: "Don't panic",
             subtitle: "Four wrong? Even Magellan got lost.",
             tone: "playful",
           });
         } else if (streak.current >= 3) {
           momentBus.emit({
-            icon: "🌫️",
+            icon: "️",
             title: "Fog of war",
             subtitle: "You're in a slump — every slump ends.",
             tone: "ink",
@@ -98,7 +98,7 @@ export function useWrongStreakEncouragement(
         }
         if (streak.current >= 2) {
           momentBus.emit({
-            icon: "✨",
+            icon: "",
             title: "Broke the streak!",
             subtitle: "The compass points true again.",
             tone: "forest",
@@ -123,7 +123,7 @@ export function useIdleNudge(opts: {
   tone?: MomentTone;
   icon?: string;
 }): void {
-  const { active, messages, intervalMs = 14000, firstDelayMs = 11000, tone = "ink", icon = "💭" } = opts;
+  const { active, messages, intervalMs = 14000, firstDelayMs = 11000, tone = "ink", icon = "" } = opts;
   const key = `${messages.join("|")}`;
   useEffect(() => {
     if (!active || messages.length === 0) return;
@@ -162,7 +162,7 @@ export function emitCloseWin(
   const iWon = top.id === myId;
   if (margin === 100) {
     momentBus.emit({
-      icon: "📸",
+      icon: "",
       title: iWon ? "Won by 100 points!" : "100 points margin!",
       subtitle: iWon ? "100 points. Perfect precision." : `${top.name} edged it by 100 points.`,
       tone: "celebrate",
@@ -171,7 +171,7 @@ export function emitCloseWin(
     confettiBus.burst({ count: 200, colors: ["#10b981", "#f59e0b", "#f43f5e", "#6366f1"], duration: 3000 });
   } else if (margin <= 5) {
     momentBus.emit({
-      icon: "🏁",
+      icon: "",
       title: "Photo finish!",
       subtitle: `${top.name} took it by just ${margin}.`,
       tone: "celebrate",

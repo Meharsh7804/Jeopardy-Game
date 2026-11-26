@@ -29,7 +29,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   onError,
 }) => {
   const isAudio = type === "audio" || url.startsWith("data:audio") || url.match(/\.(mp3|wav|ogg|m4a|aac)$/i);
-  const isVideo = type === "video" || url.startsWith("data:video") || url.match(/\.(mp4|webm|ogg)$/i);
+  const isVideo = (type as string) === "video" || url.startsWith("data:video") || url.match(/\.(mp4|webm|ogg)$/i);
 
   const mediaRef = useRef<HTMLMediaElement>(null);
 
@@ -51,7 +51,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         <audio
           ref={mediaRef as any}
           src={url}
-          controls
           className="w-full"
           onEnded={onEnded}
           onError={onError}

@@ -143,10 +143,10 @@ export const ProfilePage: React.FC<Props> = ({ onBack }) => {
                   {profile.name || "Player"}
                 </h2>
                 <div className="flex flex-wrap items-center gap-1.5 mt-2 font-mono text-[11px] font-bold">
-                  <span className="bg-[#FFD60A] border border-[#111111] px-2 py-0.5">👑 LV {level.level}</span>
-                  <span className="bg-[#F4EFE6] border border-[#111111] px-2 py-0.5">⚡ {xp} XP</span>
-                  <span className="bg-[#F4EFE6] border border-[#111111] px-2 py-0.5">🏆 {profile.elo ?? 1000} ELO</span>
-                  <span className="bg-[#F4EFE6] border border-[#111111] px-2 py-0.5">🎯 {winRate}% WIN RATE</span>
+                  <span className="bg-[#FFD60A] border border-[#111111] px-2 py-0.5"> LV {level.level}</span>
+                  <span className="bg-[#F4EFE6] border border-[#111111] px-2 py-0.5"> {xp} XP</span>
+                  <span className="bg-[#F4EFE6] border border-[#111111] px-2 py-0.5"> {profile.elo ?? 1000} ELO</span>
+                  <span className="bg-[#F4EFE6] border border-[#111111] px-2 py-0.5"> {winRate}% WIN RATE</span>
                 </div>
               </div>
             </div>
@@ -280,7 +280,7 @@ export const ProfilePage: React.FC<Props> = ({ onBack }) => {
                         {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                       </p>
                       <p className="font-mono text-[11px] text-[#111111]/75">
-                        ✓ {match.correct} CORRECT • ✕ {match.wrong} WRONG
+                         {match.correct} CORRECT •  {match.wrong} WRONG
                       </p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
@@ -323,7 +323,7 @@ export const ProfilePage: React.FC<Props> = ({ onBack }) => {
                 ))}
               </div>
               <span className="hidden sm:inline font-mono text-[10px] font-bold text-[#111111]/70">
-                💡 HOVER OR TAP ANY BADGE FOR UNLOCK CRITERIA
+                 HOVER OR TAP ANY BADGE FOR UNLOCK CRITERIA
               </span>
             </div>
 
@@ -381,7 +381,7 @@ export const ProfilePage: React.FC<Props> = ({ onBack }) => {
                         {t(achievementKey(id))}
                       </span>
                       <span className={`shrink-0 font-mono text-[10px] font-black ${isUnlocked ? "text-[#00C271]" : "text-[#111111]/50"}`}>
-                        {isUnlocked ? "✓" : "🔒"}
+                        {isUnlocked ? "" : ""}
                       </span>
                     </span>
                     <span className="block font-mono text-[10px] font-semibold text-[#111111]/80 leading-snug mt-0.5">

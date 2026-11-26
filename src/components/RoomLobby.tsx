@@ -71,7 +71,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
   useLongHover(logoRef, 2500, () => {
     soundManager.playEgg();
     momentBus.emit({
-      icon: "🔮",
+      icon: "",
       title: "The logo hums",
       subtitle: "Some totems remember every game played beneath them.",
       tone: "ink",
@@ -529,7 +529,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                       <button type="button" onClick={() => setMonitorSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/55 hover:text-[#FFD60A] font-mono text-xs" aria-label="Clear search">×</button>
                     )}
                   </div>
-                  <button type="button" onClick={() => { setQuickFindQuery(""); setQuickFindOpen(true); }} className="px-3 py-1.5 border border-[#555555] bg-[#1C1C1C] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-white hover:border-[#FFD60A] hover:text-[#FFD60A] transition-colors">All Packs ({quizzes.length}) ☰</button>
+                  <button type="button" onClick={() => { setQuickFindQuery(""); setQuickFindOpen(true); }} className="px-3 py-1.5 border border-[#555555] bg-[#1C1C1C] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-white hover:border-[#FFD60A] hover:text-[#FFD60A] transition-colors">All Packs ({quizzes.length}) </button>
                   {selectedQuiz && <button type="button" onClick={() => onEditQuiz(selectedQuiz)} className="px-3 py-1.5 border border-[#555555] bg-[#1C1C1C] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-white hover:border-[#FFD60A] hover:text-[#FFD60A] transition-colors inline-flex items-center gap-1.5">Edit Pack <Pencil className="w-3.5 h-3.5" /></button>}
                 </div>
               </div>
@@ -610,7 +610,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                   <button type="button" onClick={() => cycle(-1)} className="flex-1 py-3.5 px-3 bg-white border-2 border-[#111111] shadow-[4px_4px_0_#111111] font-mono text-[0.8125rem] font-bold tracking-[0.08em] uppercase text-[#111111] hover:bg-[#FFD60A]/30 active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0_#111111] transition-[transform,box-shadow,background-color]">◀ Prev</button>
                   <button type="button" onClick={() => cycle(1)} className="flex-1 py-3.5 px-3 bg-white border-2 border-[#111111] shadow-[4px_4px_0_#111111] font-mono text-[0.8125rem] font-bold tracking-[0.08em] uppercase text-[#111111] hover:bg-[#FFD60A]/30 active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0_#111111] transition-[transform,box-shadow,background-color]">Next ▶</button>
                 </div>
-                <button type="button" onClick={randomizePack} disabled={spinning || activeList.length === 0} className="w-full py-3 px-4 bg-[#FFD60A] border-2 border-[#111111] shadow-[3px_3px_0_#111111] font-mono text-[0.8125rem] font-bold tracking-[0.08em] uppercase text-[#111111] hover:bg-[#ffe34d] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-[transform,box-shadow,background-color] disabled:opacity-60">🎲 {spinning ? "Shuffling..." : "Shuffle / Random Pack"}</button>
+                <button type="button" onClick={randomizePack} disabled={spinning || activeList.length === 0} className="w-full py-3 px-4 bg-[#FFD60A] border-2 border-[#111111] shadow-[3px_3px_0_#111111] font-mono text-[0.8125rem] font-bold tracking-[0.08em] uppercase text-[#111111] hover:bg-[#ffe34d] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-[transform,box-shadow,background-color] disabled:opacity-60"> {spinning ? "Shuffling..." : "Shuffle / Random Pack"}</button>
               </div>
 
               {/* MASTER */}
@@ -786,7 +786,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                     />
                   </div>
                   <button type="button" onClick={pickRandomAvatar} className="px-3.5 py-2.5 bg-[#FFD60A] hover:bg-[#111111] hover:text-[#FFD60A] border-2 border-[#111111] shadow-[3px_3px_0_#111111] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none font-mono text-xs font-bold uppercase tracking-[0.06em] text-[#111111] transition-[transform,box-shadow,background-color,color] shrink-0">
-                    🎲 Random
+                     Random
                   </button>
                 </div>
               </div>
@@ -1267,7 +1267,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
               <div className="px-6 py-4 bg-[#F4EFE6] border-b border-[#111111]/10 grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-2xl bg-[#F4EFE6] border border-[#111111]/10"><p className="text-[0.75rem] uppercase font-bold text-text-muted">Games Played</p><p className="text-lg font-mono font-bold text-[#111111] mt-0.5">{profile.gamesPlayed}</p></div>
                 <div className="p-3 rounded-2xl bg-[#F4EFE6] border border-[#111111]/10"><p className="text-[0.75rem] uppercase font-bold text-text-muted">Games Won</p><p className="text-lg font-mono font-bold text-emerald-400 mt-0.5">{profile.gamesWon}</p></div>
-                <div className="p-3 rounded-2xl bg-[#F4EFE6] border border-[#111111]/10"><p className="text-[0.75rem] uppercase font-bold text-text-muted">Best Streak</p><p className="text-lg font-mono font-bold text-amber-400 mt-0.5">🔥{profile.bestStreak}</p></div>
+                <div className="p-3 rounded-2xl bg-[#F4EFE6] border border-[#111111]/10"><p className="text-[0.75rem] uppercase font-bold text-text-muted">Best Streak</p><p className="text-lg font-mono font-bold text-amber-400 mt-0.5">{profile.bestStreak}</p></div>
                 <div className="p-3 rounded-2xl bg-[#F4EFE6] border border-[#111111]/10"><p className="text-[0.75rem] uppercase font-bold text-text-muted">Fastest Buzz</p><p className="text-lg font-mono font-bold text-indigo-400 mt-0.5">{profile.fastestBuzz ? `${(profile.fastestBuzz / 1000).toFixed(2)}s` : "—"}</p></div>
               </div>
               <div className="px-6 pt-4 pb-2 flex items-center justify-between gap-4">

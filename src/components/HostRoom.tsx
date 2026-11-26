@@ -6,8 +6,8 @@ import { useRoom } from "../context/RoomContext";
 import { useQuizLibrary } from "../context/QuizLibraryContext";
 import type { Quiz, Question } from "../types/jeopardy";
 import {
-  Copy,
   Check,
+  Copy,
   Play,
   Pause,
   Eye,
@@ -103,6 +103,20 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   const [adjustPlayerId, setAdjustPlayerId] = useState("");
   const [adjustAmount, setAdjustAmount] = useState("100");
   const [showSettings, setShowSettings] = useState(false);
+
+  // Host audio controller state
+  const hostAudioRef = useRef<HTMLAudioElement>(null);
+  const [hostCurrentTime, setHostCurrentTime] = useState(0);
+  const [hostDuration, setHostDuration] = useState(0);
+  const [hostVolume, setHostVolume] = useState(1);
+  const [hostMuted, setHostMuted] = useState(false);
+
+  const formatTime = (s: number) => {
+    if (!isFinite(s) || s < 0) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
   const [showQR, setShowQR] = useState(false);
   const knownBuzzCount = useRef<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -202,7 +216,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
       // handled centrally by useScoreCelebrations below).
       if (correct && (room?.activeQuestion?.value ?? 0) >= 400) {
         momentBus.emit({
-          icon: "💎",
+          icon: "",
           title: "Big Haul!",
           subtitle: `+${room?.activeQuestion?.value} from the uncharted deep.`,
           tone: "playful",
@@ -274,7 +288,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   });
   useIdleNudge({
     active: room?.phase === "buzzing" && Object.keys(room.buzzes ?? {}).length === 0,
-    icon: "🦗",
+    icon: "",
     tone: "warm",
     firstDelayMs: 6000,
     intervalMs: 12000,
@@ -317,6 +331,23 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
   const categoryModalData = categoryModalId
     ? quiz?.categories.find((c) => c.id === categoryModalId) ?? null
     : null;
+
+  // Sync host audio element with room state (play/pause/seek)
+  useEffect(() => {
+    const audio = hostAudioRef.current;
+    if (!audio) return;
+    const aq = room.activeQuestion;
+    if (!aq || !isAudioQuestion(aq as any)) return;
+    // seek if needed
+    if (typeof aq.audioCurrentTime === "number" && Math.abs(audio.currentTime - aq.audioCurrentTime) > 0.4) {
+      audio.currentTime = aq.audioCurrentTime;
+    }
+    if (aq.audioPlaying === false) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
+  }, [room.activeQuestion?.audioPlaying, room.activeQuestion?.audioCurrentTime]);
 
   const activeLocalQuestion = quiz?.categories
     .flatMap((c) => c.questions)
@@ -386,12 +417,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
     </div>
   );
 
-  const applyScoreAdjust = (sign: 1 | -1) => {
+  const applyScoreAdjust = async (sign: 1 | -1) => {
     const amount = Math.abs(parseInt(adjustAmount || "0", 10) || 0);
     const player = gamePlayers.find((p) => p.id === adjustPlayerId);
     if (!player || amount <= 0) return;
     const tag = sign > 0 ? `+${amount}` : `−${amount}`;
-    adjustScore(player.id, sign * amount, `${player.name} — manual score override (${tag})`).catch(() => {});
+    try {
+      await adjustScore(player.id, sign * amount, `${player.name} — manual score override (${tag})`);
+    } catch (e) {
+      console.error("applyScoreAdjust failed", e);
+    }
     setShowScoreAdjust(false);
   };
 
@@ -400,38 +435,64 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
       <AchievementToast />
 
       {/* ── Unified Host Control Bar ───────────────────────────────────── */}
-      {room.phase !== "ended" && (
-      <header className="h-14 bg-[#FFFFFF] border-b-2 border-[#111111] px-4 sm:px-6 flex items-center justify-between gap-2.5 shrink-0 overflow-x-auto custom-scrollbar">
-        <div className="flex items-center gap-2.5 min-w-0 shrink-0">
-          <div className="w-9 h-9 bg-[#FF3B1D] border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFD60A" stroke="#111111" strokeWidth="2" strokeLinejoin="round"><path d="M13 2 4 14h7l-1 8 10-12h-7z" /></svg>
-          </div>
-          <div style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-sm sm:text-base uppercase leading-none text-[#111111] truncate max-w-[28vw]">{quiz?.title || "Loading..."}</div>
-          <div className="bg-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] px-2.5 py-1 flex items-center gap-1.5 font-mono text-xs font-bold shrink-0">
-            <span className="tracking-[0.08em]">{room.id}</span>
-            <button type="button" onClick={handleCopyCode} className="hover:text-[#FF3B1D] transition-colors" title="Copy room code">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
-            <button type="button" onClick={() => setShowQR(true)} className="hover:text-[#FF3B1D] transition-colors" title="Show QR"><QrCode className="w-3.5 h-3.5" /></button>
-          </div>
-        </div>
+       {room.phase !== "ended" && (
+       <header className="shrink-0 border-b-2 border-[#111111] bg-[#FFFFFF]">
+         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-nowrap overflow-x-auto">
+           <div className="flex items-center gap-3 min-w-0 shrink-0">
+             <div className="w-10 h-10 bg-[#FF3B1D] border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center shrink-0">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFD60A" stroke="#111111" strokeWidth="2" strokeLinejoin="round"><path d="M13 2 4 14h7l-1 8 10-12h-7z" /></svg>
+             </div>
+             <div className="min-w-0">
+               <div style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-[1rem] sm:text-[1.1rem] uppercase tracking-[-0.02em] leading-none text-[#111111] whitespace-nowrap">Buzzing With Quizzing</div>
+               <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                 <span className="inline-flex items-center px-2 py-0.5 border border-[#111111] bg-[#F4EFE6] font-mono text-[0.625rem] font-bold tracking-[0.08em] uppercase text-[#111111]/70 truncate max-w-full">Pack: {quiz?.title || "Loading..."}</span>
+                 {room.phase !== "lobby" && (
+                   <span className="inline-flex items-center gap-1 px-2 py-0.5 border-2 border-[#111111] bg-[#FFD60A] shadow-[2px_2px_0_#111111] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-[#111111]">
+                     {room.id}
+                     <button type="button" onClick={handleCopyCode} className="hover:text-[#FF3B1D] transition-colors" title="Copy room code">{copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}</button>
+                     <button type="button" onClick={() => setShowQR(true)} className="hover:text-[#FF3B1D] transition-colors" title="Show QR"><QrCode className="w-3 h-3" /></button>
+                   </span>
+                 )}
+               </div>
+             </div>
+           </div>
 
-        <div className="hidden 2xl:flex items-center gap-2 bg-[#111111] text-[#FFD60A] px-3.5 py-1.5 font-mono text-xs font-bold shrink-0">
-          <span className="w-2 h-2 bg-[#00C271] animate-pulse" />
-          <span className="uppercase tracking-[0.06em]">{phase === "board" ? "Board Phase // Select a Clue" : phase === "lobby" ? "Green Room // Standby" : phase === "starting" ? "Countdown // Standby" : phase === "ended" ? "Show Complete // Results" : phase === "answer" ? "Answer Revealed // Debrief" : "Active Clue // Live"}</span>
-        </div>
+           <div className="flex items-center gap-2 sm:gap-3 shrink-0 flex-nowrap">
+             {room.phase === "lobby" && (
+             <div className="flex items-stretch border-2 border-[#111111] bg-[#FFD60A] shadow-[3px_3px_0_#111111]">
+               <div className="px-3 py-2 border-r-2 border-[#111111] bg-[#FFFFFF]/35">
+                 <div className="font-mono text-[0.5625rem] font-bold tracking-[0.12em] uppercase text-[#111111]/60 leading-none">Room Code</div>
+                 <div className="font-mono text-[1.25rem] sm:text-[1.5rem] font-bold tracking-[0.14em] text-[#111111] leading-none mt-1">{room.id}</div>
+               </div>
+               <button type="button" onClick={handleCopyCode} className="px-3 font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-[#111111] hover:bg-[#111111] hover:text-[#FFD60A] transition-colors border-r-2 border-[#111111]">
+                 {copied ? "COPIED!" : "COPY"}
+               </button>
+               <button type="button" onClick={() => setShowQR(true)} className="px-3 font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase text-[#111111] hover:bg-[#111111] hover:text-[#FFD60A] transition-colors inline-flex items-center gap-1.5">
+                 <QrCode className="w-3.5 h-3.5" /> QR
+               </button>
+             </div>
+             )}
 
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <button onClick={handleUndo} disabled={scoreHistoryEntries.length === 0} className="h-9 px-2.5 bg-[#F4EFE6] hover:bg-[#FFD60A] disabled:opacity-40 disabled:pointer-events-none border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-xs font-bold flex items-center gap-1" title={t('undoLast')}><Undo2 className="w-4 h-4" /> UNDO</button>
-          <button onClick={() => redoLastScoreChange()} disabled={!canRedo} className="h-9 px-2.5 bg-[#F4EFE6] hover:bg-[#FFD60A] disabled:opacity-40 disabled:pointer-events-none border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-xs font-bold flex items-center gap-1" title="Redo last undone score change"><Redo2 className="w-4 h-4" /> REDO</button>
-          <button onClick={() => setShowHistory(true)} className="h-9 px-2.5 bg-[#FFFFFF] hover:bg-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-xs font-bold flex items-center gap-1.5" title={t('scoreHistory')}><ScrollText className="w-4 h-4" /> HISTORY</button>
-          <button onClick={() => { setAdjustPlayerId(gamePlayers[0]?.id || ""); setShowScoreAdjust(true); }} className="h-9 px-3 bg-[#FFD60A] hover:bg-[#111111] text-[#111111] hover:text-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-xs font-black flex items-center gap-1.5" title="Manual score adjust">± POINTS</button>
-          {(room.phase === "board" || room.phase === "question" || room.phase === "buzzing" || room.phase === "judging" || room.phase === "answer") && (
-            <button onClick={endGame} className="h-9 px-3 bg-[#FF3B1D] hover:bg-[#111111] text-[#FFFFFF] hover:text-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-xs font-bold">END GAME</button>
-          )}
-          <button onClick={() => setShowSettings(true)} title={t('settingsTitle')} className="w-9 h-9 bg-[#FFFFFF] hover:bg-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center"><SettingsIcon className="w-4 h-4 text-[#111111]" /></button>
-          <button onClick={handleLeave} title={t('leaveRoom')} className="w-9 h-9 bg-[#FFFFFF] hover:bg-[#FF3B1D] hover:text-white border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center text-[#111111]"><LogOut className="w-4 h-4" /></button>
-        </div>
-      </header>
-      )}
+             <div className="hidden 2xl:flex items-center gap-2 bg-[#111111] text-[#FFD60A] px-3.5 py-1.5 font-mono text-xs font-bold shrink-0">
+               <span className="w-2 h-2 bg-[#00C271] animate-pulse" />
+               <span className="uppercase tracking-[0.06em]">{phase === "board" ? "Board Phase // Select a Clue" : phase === "lobby" ? "Green Room // Standby" : phase === "starting" ? "Countdown // Standby" : phase === "ended" ? "Show Complete // Results" : phase === "answer" ? "Answer Revealed // Debrief" : "Active Clue // Live"}</span>
+             </div>
+
+             <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap">
+               <button onClick={handleUndo} disabled={scoreHistoryEntries.length === 0} className="px-3 py-2.5 bg-[#F4EFE6] hover:bg-[#FFD60A] disabled:opacity-40 disabled:pointer-events-none border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase flex items-center gap-1 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all" title={t('undoLast')}><Undo2 className="w-4 h-4" /> UNDO</button>
+               <button onClick={() => redoLastScoreChange()} disabled={!canRedo} className="px-3 py-2.5 bg-[#F4EFE6] hover:bg-[#FFD60A] disabled:opacity-40 disabled:pointer-events-none border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase flex items-center gap-1 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all" title="Redo last undone score change"><Redo2 className="w-4 h-4" /> REDO</button>
+               <button onClick={() => setShowHistory(true)} className="px-3 py-2.5 bg-[#FFFFFF] hover:bg-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase flex items-center gap-1.5 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all" title={t('scoreHistory')}><ScrollText className="w-4 h-4" /> HISTORY</button>
+               <button onClick={() => { setAdjustPlayerId(gamePlayers[0]?.id || ""); setShowScoreAdjust(true); }} className="px-3 py-2.5 bg-[#FFD60A] hover:bg-[#111111] text-[#111111] hover:text-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase flex items-center gap-1.5 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all" title="Manual score adjust">± POINTS</button>
+               {(room.phase === "board" || room.phase === "question" || room.phase === "buzzing" || room.phase === "judging" || room.phase === "answer") && (
+                 <button onClick={endGame} className="px-3 py-2.5 bg-[#FF3B1D] hover:bg-[#111111] text-[#FFFFFF] hover:text-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-mono text-[0.6875rem] font-bold tracking-[0.08em] uppercase active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all">END GAME</button>
+               )}
+               <button onClick={() => setShowSettings(true)} title={t('settingsTitle')} className="p-2.5 bg-[#FFFFFF] border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"><SettingsIcon className="w-4 h-4 text-[#111111]" /></button>
+               <button onClick={handleLeave} title={t('leaveRoom')} className="p-2.5 bg-[#FFFFFF] hover:bg-[#FF3B1D] hover:text-white border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center text-[#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"><LogOut className="w-4 h-4" /></button>
+             </div>
+           </div>
+         </div>
+       </header>
+       )}
 
       <main className={`flex-1 relative z-10 w-full ${room.phase === "board" || room.phase === "buzzing" || room.phase === "answer" ? "overflow-hidden flex flex-col min-h-0" : "overflow-y-auto"}`}>
         <AnimatePresence mode="wait">
@@ -457,7 +518,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                 <div className="bg-[#111111] text-[#FFFFFF] px-2.5 py-1.5 flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-1.5 min-w-0">
                                     <span className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase text-[#FFD60A] shrink-0">Podium {String(idx + 1).padStart(2, "0")}</span>
-                                    {(p.streak ?? 0) >= 2 && <span className="px-1 py-0.5 bg-[#FF3B1D] text-white font-mono text-[9px] font-bold uppercase">🔥 {p.streak}</span>}
+                                    {(p.streak ?? 0) >= 2 && <span className="px-1 py-0.5 bg-[#FF3B1D] text-white font-mono text-[9px] font-bold uppercase"> {p.streak}</span>}
                                   </div>
                                   <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.06em] ${connected ? "text-[#00C271]" : "text-[#FF3B1D]"}`}>● {connected ? "Live" : "Off"}</span>
                                 </div>
@@ -470,7 +531,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                   {pDef && <div className="bg-[#111111] text-[#FFFFFF] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider truncate max-w-full">{pDef.name} • {pDef.abilityName}</div>}
                                 </div>
                                 <div className="border-t-2 border-[#111111] flex items-stretch">
-                                  <div className={`flex-1 py-1 text-center font-mono text-[10px] font-black tracking-widest uppercase ${connected ? "bg-[#00C271] text-[#111111]" : "bg-[#FF3B1D] text-white"}`}>{connected ? "✓ Locked In // Ready" : "● Disconnected"}</div>
+                                  <div className={`flex-1 py-1 text-center font-mono text-[10px] font-black tracking-widest uppercase ${connected ? "bg-[#00C271] text-[#111111]" : "bg-[#FF3B1D] text-white"}`}>{connected ? " Locked In // Ready" : "● Disconnected"}</div>
                                   <button onClick={() => handleKick(p.id)} className="px-2.5 bg-[#111111] text-[#FF3B1D] hover:bg-[#FF3B1D] hover:text-white border-l-2 border-[#111111] font-mono text-[9px] font-black uppercase tracking-wider">Kick</button>
                                 </div>
                               </motion.div>
@@ -609,25 +670,130 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                         {room.activeQuestion.isDailyDouble && <span className="bg-[#FFD60A] text-[#111111] px-2 py-0.5 font-mono text-[10px] font-bold">DD</span>}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {timeLeft !== null && <span className={`px-3 py-0.5 font-mono text-sm font-black ${room.activeQuestion?.paused ? "bg-[#F4EFE6] text-[#111111]" : timeLeft <= 4 ? "bg-[#FF3B1D] text-[#FFFFFF]" : "bg-[#FFD60A] text-[#111111]"}`}>{room.activeQuestion?.paused ? "PAUSED" : `⚡ ${timeLeft.toFixed(2)}s`}</span>}
+                        {timeLeft !== null && <span className={`px-3 py-0.5 font-mono text-sm font-black ${room.activeQuestion?.paused ? "bg-[#F4EFE6] text-[#111111]" : timeLeft <= 4 ? "bg-[#FF3B1D] text-[#FFFFFF]" : "bg-[#FFD60A] text-[#111111]"}`}>{room.activeQuestion?.paused ? "PAUSED" : ` ${timeLeft.toFixed(2)}s`}</span>}
                         <span className="font-mono text-xs font-bold text-[#00C271] uppercase hidden sm:inline">Active Clue // Live</span>
                       </div>
                     </div>
                     {(() => {
                       const mod = (room.activeQuestion as any)?.modifier;
                       if (!mod) return null;
-                      return <div className="bg-[#FFD60A] border-b-2 border-[#111111] px-5 py-2 flex items-center justify-between font-mono text-xs font-black text-[#111111] shrink-0"><span>🚇 MODIFIER: {String(mod.name || mod).toUpperCase()}</span><span className="font-bold normal-case tracking-normal text-[#111111]/70">{mod.hint || mod.rule || ""}</span></div>;
+                      return <div className="bg-[#FFD60A] border-b-2 border-[#111111] px-5 py-2 flex items-center justify-between font-mono text-xs font-black text-[#111111] shrink-0"><span> MODIFIER: {String(mod.name || mod).toUpperCase()}</span><span className="font-bold normal-case tracking-normal text-[#111111]/70">{mod.hint || mod.rule || ""}</span></div>;
                     })()}
                     <div className="flex-1 px-8 py-6 flex flex-col items-center justify-center text-center bg-[#FFFFFF] overflow-y-auto min-h-0">
-                      {room.activeQuestion.mediaUrl && (
+                      {room.activeQuestion.mediaUrl && !isAudioQuestion(room.activeQuestion) && (
                         <div className="relative overflow-hidden border-2 border-[#111111] shadow-[4px_4px_0_#111111] mx-auto max-w-full max-h-52 bg-black mb-4 shrink-0">
                           <MediaViewer url={room.activeQuestion.mediaUrl} type={room.activeQuestion.type as any} audioPlaying={room.activeQuestion.audioPlaying} className="max-h-52 object-contain" />
                         </div>
                       )}
                       {isAudioQuestion(room.activeQuestion) && (
-                        <div className="flex items-center justify-between gap-3 p-3 bg-[#F4EFE6] border-2 border-[#111111] mb-4 w-full max-w-lg shrink-0">
-                          <div className="text-left"><p className="font-mono text-[10px] font-bold uppercase text-[#111111]">Host Audio Control</p><p className="text-[10px] text-[#111111]/60">Sync playback for all players</p></div>
-                          <button onClick={() => setAudioPlaying(room.activeQuestion?.audioPlaying === false ? true : false)} className={`px-4 py-2 border-2 border-[#111111] font-mono text-xs font-bold uppercase ${room.activeQuestion?.audioPlaying === false ? "bg-[#00C271] text-[#111111]" : "bg-[#FFD60A] text-[#111111]"}`}>{room.activeQuestion?.audioPlaying === false ? "Play" : "Pause"}</button>
+                        <div className="w-full max-w-2xl mx-auto mb-4 shrink-0">
+                          {/* Hidden audio element driving playback */}
+                          <audio
+                            ref={hostAudioRef}
+                            src={room.activeQuestion.mediaUrl}
+                            className="hidden"
+                            onTimeUpdate={(e) => setHostCurrentTime((e.target as HTMLAudioElement).currentTime)}
+                            onLoadedMetadata={(e) => setHostDuration((e.target as HTMLAudioElement).duration || 0)}
+                            onEnded={() => { setAudioPlaying(false, hostAudioRef.current?.currentTime ?? 0); }}
+                          />
+                          {/* Soundboard Deck */}
+                          <div className="w-full bg-[#FFFFFF] border-[3px] border-[#111111] shadow-[6px_6px_0px_#111111] p-4 sm:p-5 flex flex-col gap-4 rounded-none">
+                            {/* Top Telemetry Strip */}
+                            <div className="flex items-center justify-between gap-2 border-b-2 border-[#111111]/20 pb-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-end gap-0.5 h-4">
+                                  {[0,1,2,3,4].map((i) => (
+                                    <span
+                                      key={i}
+                                      className={`w-1.5 bg-[#FFD60A] ${room.activeQuestion?.audioPlaying !== false ? "animate-pulse" : ""}`}
+                                      style={{
+                                        height: room.activeQuestion?.audioPlaying !== false ? `${6 + (i % 3) * 4}px` : "3px",
+                                        backgroundColor: i % 2 === 0 ? "#FFD60A" : "#00C271",
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                                <span className="font-mono text-xs font-black text-[#111111] uppercase"> HOST AUDIO SOUNDBOARD</span>
+                              </div>
+                              <span className="bg-[#00C271] text-[#111111] px-2.5 py-0.5 font-mono text-[10px] font-black uppercase">● SYNCED TO ALL PLAYERS</span>
+                            </div>
+                            {/* Scrubber */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between font-mono text-xs font-bold text-[#FFFFFF]">
+                                <span className="text-[#FF3B1D]">{formatTime(hostCurrentTime)}</span>
+                                <span className="text-[#FFFFFF]/60 text-[10px] truncate max-w-[50%]">{room.activeQuestion.text}</span>
+                                <span>{formatTime(hostDuration)}</span>
+                              </div>
+                              <div
+                                className="relative w-full h-4 bg-[#E5DEC9] border-2 border-[#111111] cursor-pointer"
+                                onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                                  const t = pct * (hostDuration || 0);
+                                  if (hostAudioRef.current) hostAudioRef.current.currentTime = t;
+                                  setHostCurrentTime(t);
+                                  setAudioPlaying(room.activeQuestion?.audioPlaying !== false, t);
+                                }}
+                              >
+                                <div className="h-full bg-[#FFD60A]" style={{ width: `${hostDuration ? (hostCurrentTime / hostDuration) * 100 : 0}%` }} />
+                                <div className="absolute top-0 w-3 h-full bg-[#FFFFFF] border-l-2 border-[#111111]" style={{ left: `calc(${hostDuration ? (hostCurrentTime / hostDuration) * 100 : 0}% - 6px)` }} />
+                              </div>
+                            </div>
+                            {/* Transport & Volume */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  onClick={() => {
+                                    const playing = room.activeQuestion?.audioPlaying !== false;
+                                    const next = !playing;
+                                    if (hostAudioRef.current) {
+                                      if (next) hostAudioRef.current.play().catch(() => {});
+                                      else hostAudioRef.current.pause();
+                                    }
+                                    setAudioPlaying(next, hostAudioRef.current?.currentTime ?? hostCurrentTime);
+                                  }}
+                                  className="px-4 py-2 bg-[#FFD60A] hover:bg-[#00C271] text-[#111111] font-['Archivo_Black'] text-xs uppercase border-2 border-[#111111] shadow-[3px_3px_0px_#000000] flex items-center gap-2 rounded-none"
+                                >
+                                  {room.activeQuestion?.audioPlaying !== false ? "⏸ PAUSE" : "▶ PLAY"}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (hostAudioRef.current) hostAudioRef.current.currentTime = 0;
+                                    setHostCurrentTime(0);
+                                    setAudioPlaying(room.activeQuestion?.audioPlaying !== false, 0);
+                                  }}
+                                  className="px-3 py-2 bg-[#FFFFFF] hover:bg-[#FFD60A] text-[#111111] font-mono text-xs font-black uppercase border-2 border-[#111111] shadow-[3px_3px_0px_#000000] flex items-center gap-1.5 rounded-none"
+                                >
+                                  ⏮ RESTART
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2 bg-[#F4EFE6] border border-[#111111]/40 px-3 py-1.5">
+                                <button
+                                  onClick={() => {
+                                    const m = !hostMuted;
+                                    setHostMuted(m);
+                                    if (hostAudioRef.current) hostAudioRef.current.muted = m;
+                                  }}
+                                  className="text-[#FFD60A] font-mono text-xs font-bold"
+                                >
+                                  {hostMuted ? "" : ""}
+                                </button>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.01}
+                                  value={hostVolume}
+                                  onChange={(e) => {
+                                    const v = parseFloat(e.target.value);
+                                    setHostVolume(v);
+                                    if (hostAudioRef.current) hostAudioRef.current.volume = v;
+                                  }}
+                                  className="w-20 sm:w-24 accent-[#FFD60A] cursor-pointer"
+                                />
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                       <p className="text-3xl sm:text-4xl font-extrabold text-[#111111] leading-snug max-w-2xl whitespace-pre-wrap" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{room.activeQuestion.text}</p>
@@ -641,7 +807,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                     </div>
                     {(!room.activeQuestion.revealAnswer && activeLocalQuestion?.answer) && (
                       <div className="mx-5 mb-5 bg-[#F4EFE6] border-2 border-[#111111] border-l-[6px] border-l-[#FF3B1D] p-4 shrink-0">
-                        <p className="font-mono text-[11px] font-black text-[#FF3B1D] uppercase tracking-[0.08em]">👁 Host Only // Correct Answer</p>
+                        <p className="font-mono text-[11px] font-black text-[#FF3B1D] uppercase tracking-[0.08em]"> Host Only // Correct Answer</p>
                         <p className="text-xl font-extrabold text-[#111111] mt-1 whitespace-pre-wrap">{activeLocalQuestion.answer}</p>
                       </div>
                     )}
@@ -709,7 +875,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                               <motion.div key={pId} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98 }} className="bg-[#FFD60A] border-2 border-[#111111] shadow-[4px_4px_0_#111111] p-3.5 space-y-3 shrink-0">
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2"><span className="bg-[#111111] text-[#FFD60A] px-2 py-0.5 font-mono text-xs font-black">#1</span><span className="font-mono text-[10px] font-bold uppercase tracking-[0.08em]">On The Mic</span>{override && <span className="font-mono text-[9px] font-bold bg-[#111111] text-[#FFD60A] px-1.5 py-0.5">FRONT</span>}</div>
-                                  {fmtReaction(react) && <span className="bg-[#FFFFFF] border border-[#111111] px-2 py-0.5 font-mono text-xs font-bold">⚡ {fmtReaction(react)}</span>}
+                                  {fmtReaction(react) && <span className="bg-[#FFFFFF] border border-[#111111] px-2 py-0.5 font-mono text-xs font-bold"> {fmtReaction(react)}</span>}
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={48} className="!rounded-none w-12 h-12 border-2 border-[#111111] bg-[#FFFFFF] shrink-0" />
@@ -718,21 +884,21 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                                       <span className="font-mono text-[10px] font-bold uppercase">Score: {p.score}</span>
                                       {pDef && <span className="bg-[#111111] text-[#FFFFFF] px-1.5 py-0.5 font-mono text-[10px] uppercase">{pDef.abilityName}</span>}
-                                      {isRisk && <span className="bg-[#FF3B1D] text-white px-1.5 py-0.5 font-mono text-[10px] font-bold">☠️ RISK ×2</span>}
-                                      {hiddenNow && <span className="font-mono text-[10px] font-bold">👻 HIDDEN</span>}
+                                      {isRisk && <span className="bg-[#FF3B1D] text-white px-1.5 py-0.5 font-mono text-[10px] font-bold">️ RISK ×2</span>}
+                                      {hiddenNow && <span className="font-mono text-[10px] font-bold"> HIDDEN</span>}
                                     </div>
                                   </div>
                                 </div>
-                                {fast && <p className="font-mono text-[10px] font-bold uppercase text-[#111111]">⚡ Fast buzz — +${Math.max(1, Math.round((room.activeQuestion?.value ?? 0) * 0.1))} bonus on correct</p>}
+                                {fast && <p className="font-mono text-[10px] font-bold uppercase text-[#111111]"> Fast buzz — +${Math.max(1, Math.round((room.activeQuestion?.value ?? 0) * 0.1))} bonus on correct</p>}
                                 <div className="grid grid-cols-2 gap-2.5">
-                                  <button onClick={() => handleJudge(true)} className="py-3 bg-[#00C271] hover:bg-[#00A862] text-[#111111] font-['Archivo_Black'] text-sm border-2 border-[#111111] shadow-[3px_3px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none uppercase">✓ Correct [1]</button>
-                                  <button onClick={() => handleJudge(false)} className="py-3 bg-[#FF3B1D] hover:bg-[#E02E12] text-[#FFFFFF] font-['Archivo_Black'] text-sm border-2 border-[#111111] shadow-[3px_3px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none uppercase">✕ Wrong [2]</button>
+                                  <button onClick={() => handleJudge(true)} className="py-3 bg-[#00C271] hover:bg-[#00A862] text-[#111111] font-['Archivo_Black'] text-sm border-2 border-[#111111] shadow-[3px_3px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none uppercase"> Correct [1]</button>
+                                  <button onClick={() => handleJudge(false)} className="py-3 bg-[#FF3B1D] hover:bg-[#E02E12] text-[#FFFFFF] font-['Archivo_Black'] text-sm border-2 border-[#111111] shadow-[3px_3px_0_#111111] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none uppercase"> Wrong [2]</button>
                                 </div>
                               </motion.div>
                             ) : (
                               <motion.div key={pId} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-[#F4EFE6] border-2 border-[#111111] px-3 py-2 flex items-center justify-between gap-2 font-mono text-xs shrink-0">
                                 <div className="flex items-center gap-2 min-w-0"><span className="font-black w-5">#{idx + 1}</span><PlayerAvatar seed={p.id} avatar={p.avatar} name={p.name} size={24} className="!rounded-none w-6 h-6 border border-[#111111] shrink-0" /><span className="font-bold uppercase truncate">{p.name}</span></div>
-                                {fmtReaction(react) && <span className="font-bold shrink-0">⚡ {fmtReaction(react)}</span>}
+                                {fmtReaction(react) && <span className="font-bold shrink-0"> {fmtReaction(react)}</span>}
                               </motion.div>
                             );
                           }) : (
@@ -767,6 +933,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
                 exitLabel={t('returnToLobby')}
                 quizTitle={quiz?.title}
                 roomCode={room.id}
+                matchCount={room.matchCount ?? 0}
                 onOpenHistory={() => setShowHistory(true)}
               />
             </motion.div>
@@ -781,7 +948,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }} className="max-w-lg w-full bg-[#FFFFFF] border-[3px] border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden" onClick={(e) => e.stopPropagation()}>
               <div className="bg-[#111111] text-[#FFD60A] px-5 py-3 flex items-center justify-between gap-3">
                 <span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-sm uppercase tracking-wide">Category Dossier</span>
-                <button onClick={() => setCategoryModalId(null)} aria-label="Close" className="bg-[#FF3B1D] text-white w-7 h-7 border border-white font-mono font-bold flex items-center justify-center">✕</button>
+                <button onClick={() => setCategoryModalId(null)} aria-label="Close" className="bg-[#FF3B1D] text-white w-7 h-7 border border-white font-mono font-bold flex items-center justify-center"></button>
               </div>
               <div className="p-5 space-y-3">
                 <div className="w-10 h-10 bg-[#FFD60A] border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center"><Info className="w-5 h-5 text-[#111111]" /></div>
@@ -801,7 +968,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }} className="max-w-lg w-full max-h-[85vh] bg-[#FFFFFF] border-[3px] border-[#111111] shadow-[8px_8px_0_#111111] rounded-none overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="bg-[#111111] text-[#FFD60A] px-5 py-3 flex items-center justify-between gap-3 shrink-0">
                 <span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-sm uppercase tracking-wide flex items-center gap-2"><ScrollText className="w-4 h-4" /> Game History // Score Log</span>
-                <button onClick={() => setShowHistory(false)} aria-label="Close" className="bg-[#FF3B1D] text-white w-7 h-7 border border-white font-mono font-bold flex items-center justify-center">✕</button>
+                <button onClick={() => setShowHistory(false)} aria-label="Close" className="bg-[#FF3B1D] text-white w-7 h-7 border border-white font-mono font-bold flex items-center justify-center"></button>
               </div>
               <div className="p-4 space-y-3 flex-1 min-h-0 flex flex-col">
                 <p className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111]/55">{t('everyScoreChange')}</p>
@@ -843,7 +1010,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onLeave }) => {
             <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }} className="max-w-md w-full bg-[#FFFFFF] border-[3px] border-[#111111] shadow-[8px_8px_0_#111111] rounded-none overflow-hidden" onClick={(e) => e.stopPropagation()}>
               <div className="bg-[#111111] text-[#FFD60A] px-5 py-3 flex items-center justify-between">
                 <span style={{ fontFamily: "'Archivo Black', sans-serif" }} className="text-sm uppercase tracking-wide">± Manual Score Override</span>
-                <button onClick={() => setShowScoreAdjust(false)} aria-label="Close" className="bg-[#FF3B1D] text-[#FFFFFF] w-7 h-7 border border-[#FFFFFF] font-mono font-bold flex items-center justify-center">✕</button>
+                <button onClick={() => setShowScoreAdjust(false)} aria-label="Close" className="bg-[#FF3B1D] text-[#FFFFFF] w-7 h-7 border border-[#FFFFFF] font-mono font-bold flex items-center justify-center"></button>
               </div>
               <div className="p-5 space-y-4">
                 <div>

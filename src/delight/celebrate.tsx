@@ -115,16 +115,16 @@ export const celebrateScoreChange = (input: CelebrateInput): void => {
     const epic = beforeGap >= 500;
     if (epic) {
       recordComeback(beforeGap);
-      emit("🌟", "EPIC Comeback!", `Climbed back from ${beforeGap} down to take the lead.`, "celebrate");
+      emit("", "EPIC Comeback!", `Climbed back from ${beforeGap} down to take the lead.`, "celebrate");
       soundManager.playComeback();
       confettiBus.burst({ count: 240, colors: THEME_COLORS, duration: 3000 });
     } else if (wasTrailing) {
       recordComeback(Math.max(beforeGap, 0));
-      emit("🔙", "Comeback!", "Snatched the lead from the depths.", "warm");
+      emit("", "Comeback!", "Snatched the lead from the depths.", "warm");
       soundManager.playComeback();
       confettiBus.burst({ count: 160, colors: THEME_COLORS, duration: 2600 });
     } else {
-      emit("👑", "New Leader!", "The map redraws around them.", "celebrate");
+      emit("", "New Leader!", "The map redraws around them.", "celebrate");
       soundManager.playClutch();
       confettiBus.burst({ count: 120, colors: THEME_COLORS });
     }
@@ -132,7 +132,7 @@ export const celebrateScoreChange = (input: CelebrateInput): void => {
 
   // 2) A hefty single haul (the deep-end tiles) — only for the current player.
   if (changedId != null && changedId === input.myId && isCorrect && tileValue && tileValue >= 400) {
-    emit("💎", "Big Haul!", `+${tileValue} from the uncharted deep.`, "playful");
+    emit("", "Big Haul!", `+${tileValue} from the uncharted deep.`, "playful");
   }
 
   // 3) Hot-streak milestones — only fire for the current player's own streak.
@@ -144,7 +144,7 @@ export const celebrateScoreChange = (input: CelebrateInput): void => {
         streakSeen.add(key);
         recordStreak(m);
         emit(
-          "🔥",
+          "",
           m >= 7 ? "Unstoppable!" : "On Fire!",
           `You're ${m}-streak strong.`,
           "forest",
@@ -207,7 +207,7 @@ export const useScoreCelebrations = (
         fourDigitsSeen.add(id);
         soundManager.playClutch();
         momentBus.emit({
-          icon: "🔟",
+          icon: "",
           title: "Four Digits!",
           subtitle: "You landed exactly on 1000. Suspiciously clean.",
           tone: "celebrate",

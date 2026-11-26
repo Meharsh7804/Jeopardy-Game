@@ -2,7 +2,7 @@
 
 import type { AbilityKind } from "../abilities/types";
 
-export type QuestionType = "text" | "image" | "audio" | "video" | "both";
+export type QuestionType = "text" | "image" | "audio";
 
 export type QuestionDifficulty = "easy" | "medium" | "hard";
 
@@ -118,6 +118,7 @@ export interface ActiveQuestion {
   revealAnswer: boolean;
   openedAt?: number; // server-resolved timestamp of when buzzing opened — reaction time = buzz - openedAt
   audioPlaying?: boolean; // master host audio state: true = playing, false = paused
+  audioCurrentTime?: number; // master host audio position in seconds (broadcast on seek/play/pause)
   timerDuration?: number; // optional per-question countdown in seconds (0/undefined = off)
   paused?: boolean; // host paused the question timer/buzzing
   pauseRemaining?: number; // seconds remaining when paused
@@ -147,8 +148,8 @@ export interface Room {
   jailNext?: string[]; // ids being jailed by the question being judged — applied when the next question opens
   startAt?: number; // server-resolved timestamp when the start countdown began
   createdAt: number;
+  matchCount?: number;
 }
-
 // ─── Local UI / quiz library types ───────────────────────────────────────────
 
 export interface ScoreHistoryEntry {
